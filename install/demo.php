@@ -78,35 +78,37 @@ function sba_demo_load(PDO $pdo, string $p): array
     $contentPool = [$users['noura.content'], $users['sultan.content'], $users['reem.both']];
 
     /* ---- البرامج ---- */
+    // [الاسم، المقدم، نموذج التقييم: 1 قياسي / 2 حواري / 3 مباشر / 4 مسجل]
     $programDefs = [
-        'إذاعة الرياض'        => [['مجلس الرياض', 'تركي الماضي'], ['أمسيات العاصمة', 'هند السالم'], ['صباح العاصمة', 'بدر الحمد']],
-        'إذاعة جدة'           => [['صباح جدة', 'أحمد باجابر'], ['البحر والناس', 'لمى فقيه']],
-        'إذاعة القرآن الكريم' => [['تلاوات الفجر', 'ناصر القطامي'], ['تفسير وبيان', 'صالح المغامسي']],
-        'إذاعة نداء الإسلام'  => [['فتاوى على الهواء', 'عبدالله المصلح'], ['هدي النبي', 'خالد الجليل']],
-        'الإذاعة الإنجليزية'  => [['Morning Mix', 'Sarah Ahmed'], ['Saudi Talks', 'Omar Khan']],
+        'إذاعة الرياض'        => [['مجلس الرياض', 'تركي الماضي', 2], ['أمسيات العاصمة', 'هند السالم', 3], ['صباح العاصمة', 'بدر الحمد', 3]],
+        'إذاعة جدة'           => [['صباح جدة', 'أحمد باجابر', 3], ['البحر والناس', 'لمى فقيه', 4]],
+        'إذاعة القرآن الكريم' => [['تلاوات الفجر', 'ناصر القطامي', 4], ['تفسير وبيان', 'صالح المغامسي', 1]],
+        'إذاعة نداء الإسلام'  => [['فتاوى على الهواء', 'عبدالله المصلح', 2], ['هدي النبي', 'خالد الجليل', 4]],
+        'الإذاعة الإنجليزية'  => [['Morning Mix', 'Sarah Ahmed', 3], ['Saudi Talks', 'Omar Khan', 2]],
     ];
     $programs = [];
     $check = $pdo->prepare("SELECT id FROM `{$p}programs` WHERE station_id = ? AND name = ?");
-    $ins   = $pdo->prepare("INSERT INTO `{$p}programs` (station_id, name, presenter, active) VALUES (?,?,?,1)");
+    $ins   = $pdo->prepare("INSERT INTO `{$p}programs` (station_id, name, presenter, form_id, active) VALUES (?,?,?,?,1)");
     foreach ($programDefs as $stName => $list) {
-        foreach ($list as [$pName, $presenter]) {
+        foreach ($list as [$pName, $presenter, $formId]) {
             $sid = $stations[$stName]['id'];
             $check->execute([$sid, $pName]);
             $pid = (int)$check->fetchColumn();
             if (!$pid) {
-                $ins->execute([$sid, $pName, $presenter]);
+                $ins->execute([$sid, $pName, $presenter, $formId]);
                 $pid = (int)$pdo->lastInsertId();
                 $ids['programs'][] = $pid;
             }
-            $programs[] = ['id' => $pid, 'station' => $stName];
+            $programs[] = ['id' => $pid, 'station' => $stName, 'form' => $formId];
         }
     }
     $log[] = 'برامج تجريبية: ' . count($ids['programs']) . ' جديدة';
 
     /* ---- الحلقات + التكليفات + التقييمات ---- */
-    $criteria = ['technical' => [], 'content' => []];
-    foreach ($pdo->query("SELECT id, type FROM `{$p}criteria` WHERE active = 1") as $r) {
-        $criteria[$r['type']][] = (int)$r['id'];
+    // معايير كل نموذج على حدة (يقيَّم كل برنامج بنموذجه)
+    $criteriaByForm = [];
+    foreach ($pdo->query("SELECT id, form_id, type FROM `{$p}criteria` WHERE active = 1") as $r) {
+        $criteriaByForm[(int)$r['form_id']][$r['type']][] = (int)$r['id'];
     }
     $insEp   = $pdo->prepare("INSERT INTO `{$p}episodes` (program_id, title, air_date, air_time) VALUES (?,?,?,?)");
     $insAss  = $pdo->prepare("INSERT IGNORE INTO `{$p}episode_evaluators` (episode_id, user_id, type) VALUES (?,?,?)");
@@ -116,6 +118,7 @@ function sba_demo_load(PDO $pdo, string $p): array
     $evalCount = 0; $pendingCount = 0;
     foreach ($programs as $prog) {
         $profile = $stations[$prog['station']];
+        $criteria = $criteriaByForm[$prog['form']] ?? $criteriaByForm[1] ?? ['technical' => [], 'content' => []];
         $numEps = mt_rand(3, 4);
         for ($e = 1; $e <= $numEps; $e++) {
             $daysAgo = mt_rand(0, 20);
@@ -133,7 +136,7 @@ function sba_demo_load(PDO $pdo, string $p): array
                     $doneProb = $daysAgo >= 3 ? 0.85 : 0.4;
                     if (mt_rand(0, 100) / 100 > $doneProb) { $pendingCount++; continue; }
                     $items = [];
-                    foreach ($criteria[$type] as $cid) {
+                    foreach (($criteria[$type] ?? []) as $cid) {
                         $items[$cid] = max(1, min(10, (int)round($profile['q'] + mt_rand(-15, 15) / 10)));
                     }
                     if (!$items) continue;

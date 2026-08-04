@@ -26,9 +26,20 @@ function sba_migrations(): array
             // رمز الوصول لدعم التحديث من مستودع خاص
             "INSERT IGNORE INTO `{prefix}settings` (skey, svalue) VALUES ('update_token', '')",
         ],
-        // '1.3.0' => [
-        //     "ALTER TABLE `{prefix}stations` ADD COLUMN city VARCHAR(100) NULL",
-        // ],
+        '1.5.0' => [
+            // نماذج التقييم المتعددة + مرفقات الحلقة
+            "ALTER TABLE `{prefix}criteria` ADD COLUMN form_id INT UNSIGNED NOT NULL DEFAULT 1 AFTER id",
+            "ALTER TABLE `{prefix}criteria` ADD KEY idx_crit_form (form_id)",
+            "ALTER TABLE `{prefix}programs` ADD COLUMN form_id INT UNSIGNED NULL AFTER presenter",
+            "ALTER TABLE `{prefix}episodes` ADD COLUMN form_id INT UNSIGNED NULL AFTER air_time",
+            "ALTER TABLE `{prefix}episodes` ADD COLUMN audio_path VARCHAR(255) NULL AFTER form_id",
+            "ALTER TABLE `{prefix}episodes` ADD COLUMN ref_link VARCHAR(500) NULL AFTER audio_path",
+            "UPDATE `{prefix}criteria` SET form_id = 1 WHERE form_id = 0",
+            // زراعة النماذج الأربعة ومعاييرها (جدول eval_forms أنشأه إعادة تنفيذ المخطط)
+            function (PDO $pdo, string $prefix) {
+                sba_seed_forms($pdo, $prefix);
+            },
+        ],
     ];
 }
 
@@ -58,8 +69,20 @@ function sba_run_migrations(PDO $pdo, string $prefix, string $targetVersion): ar
     foreach ($migrations as $version => $statements) {
         if (version_compare($version, $current, '<=')) continue;
         if (version_compare($version, $targetVersion, '>')) continue;
-        foreach ($statements as $sql) {
-            $pdo->exec(str_replace('{prefix}', $prefix, $sql));
+        foreach ($statements as $stmt) {
+            if (is_callable($stmt)) {
+                $stmt($pdo, $prefix);
+                continue;
+            }
+            try {
+                $pdo->exec(str_replace('{prefix}', $prefix, $stmt));
+            } catch (PDOException $e) {
+                // تسامح مع "موجود مسبقاً": عمود/فهرس/جدول مكرر (تركيب حديث سبق أن شمل التغيير)
+                $code = (int)($e->errorInfo[1] ?? 0);
+                if (!in_array($code, [1050, 1060, 1061, 1062, 1091], true)) {
+                    throw $e;
+                }
+            }
         }
         $log[] = "تم تنفيذ ترقية الإصدار $version (" . count($statements) . ' أمراً)';
     }

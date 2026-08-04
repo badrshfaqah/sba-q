@@ -38,6 +38,7 @@ function sba_schema(string $prefix): array
             station_id INT UNSIGNED NOT NULL,
             name VARCHAR(150) NOT NULL,
             presenter VARCHAR(150) NULL,
+            form_id INT UNSIGNED NULL,
             active TINYINT(1) NOT NULL DEFAULT 1,
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (id),
@@ -52,6 +53,9 @@ function sba_schema(string $prefix): array
             title VARCHAR(200) NOT NULL,
             air_date DATE NOT NULL,
             air_time TIME NOT NULL,
+            form_id INT UNSIGNED NULL,
+            audio_path VARCHAR(255) NULL,
+            ref_link VARCHAR(500) NULL,
             notes TEXT NULL,
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (id),
@@ -76,13 +80,24 @@ function sba_schema(string $prefix): array
                 REFERENCES `{$p}users`(id) ON DELETE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
 
+        "CREATE TABLE IF NOT EXISTS `{$p}eval_forms` (
+            id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+            name VARCHAR(120) NOT NULL,
+            description VARCHAR(300) NULL,
+            active TINYINT(1) NOT NULL DEFAULT 1,
+            PRIMARY KEY (id),
+            UNIQUE KEY uq_form_name (name)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+
         "CREATE TABLE IF NOT EXISTS `{$p}criteria` (
             id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+            form_id INT UNSIGNED NOT NULL DEFAULT 1,
             type ENUM('technical','content') NOT NULL,
             name VARCHAR(150) NOT NULL,
             sort INT NOT NULL DEFAULT 0,
             active TINYINT(1) NOT NULL DEFAULT 1,
-            PRIMARY KEY (id)
+            PRIMARY KEY (id),
+            KEY idx_crit_form (form_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
 
         "CREATE TABLE IF NOT EXISTS `{$p}evaluations` (
@@ -152,27 +167,75 @@ function sba_schema(string $prefix): array
     ];
 }
 
+/**
+ * نماذج التقييم ومعاييرها — تُستدعى عند التثبيت وعند الترقية
+ * كل نموذج يناسب طبيعة برنامج مختلفة (قياسي / حواري / مباشر / مسجل)
+ */
+function sba_seed_forms(PDO $pdo, string $prefix): void
+{
+    $forms = [
+        1 => ['النموذج القياسي', 'الشكل الافتراضي — يناسب أغلب البرامج العامة'],
+        2 => ['برنامج حواري (مع ضيوف)', 'حلقات تعتمد على ضيف أو أكثر — يركز على إدارة الحوار وقيمة الضيف'],
+        3 => ['بث مباشر', 'برامج تُبث على الهواء — يركز على الارتجال وإدارة اللحظة والتعامل الفني الحي'],
+        4 => ['برنامج مسجل', 'محتوى منتج مسبقاً — يركز على المونتاج والهندسة الصوتية وبناء السرد'],
+    ];
+    $insForm = $pdo->prepare("INSERT IGNORE INTO `{$prefix}eval_forms` (id, name, description) VALUES (?,?,?)");
+    foreach ($forms as $id => [$name, $desc]) $insForm->execute([$id, $name, $desc]);
+
+    $criteria = [
+        // النموذج 1: القياسي
+        [1, 'technical', 'جودة الصوت ونقاء البث', 1],
+        [1, 'technical', 'مستوى الإشارة وثباتها', 2],
+        [1, 'technical', 'التوازن الصوتي (موسيقى/كلام)', 3],
+        [1, 'technical', 'خلو البث من الانقطاعات', 4],
+        [1, 'technical', 'جودة الفواصل والمؤثرات', 5],
+        [1, 'content', 'جودة المحتوى وقيمته', 1],
+        [1, 'content', 'الالتزام بفكرة البرنامج', 2],
+        [1, 'content', 'أداء المذيع وحضوره', 3],
+        [1, 'content', 'سلامة اللغة والأسلوب', 4],
+        [1, 'content', 'التفاعل مع الجمهور', 5],
+        // النموذج 2: حواري مع ضيوف
+        [2, 'technical', 'جودة صوت الضيف ووسيلة الاتصال', 1],
+        [2, 'technical', 'توازن مستويات الأصوات بين الأطراف', 2],
+        [2, 'technical', 'نقاء البث وخلوه من الانقطاعات', 3],
+        [2, 'technical', 'جودة الفواصل والمؤثرات', 4],
+        [2, 'content', 'قيمة الضيف وملاءمته للموضوع', 1],
+        [2, 'content', 'إدارة الحوار وتوزيع الوقت بين الأطراف', 2],
+        [2, 'content', 'عمق الأسئلة وتسلسلها المنطقي', 3],
+        [2, 'content', 'تفاعل المذيع مع إجابات الضيف', 4],
+        [2, 'content', 'سلامة اللغة والأسلوب', 5],
+        // النموذج 3: بث مباشر
+        [3, 'technical', 'ثبات البث المباشر وجاهزية الاستوديو', 1],
+        [3, 'technical', 'التعامل الفني مع المداخلات والاتصالات', 2],
+        [3, 'technical', 'جودة الصوت الميداني/الاستوديو', 3],
+        [3, 'technical', 'خلو البث من الانقطاعات', 4],
+        [3, 'content', 'الارتجال وإدارة اللحظة الحية', 1],
+        [3, 'content', 'التفاعل مع الجمهور والمداخلات', 2],
+        [3, 'content', 'إدارة الوقت والالتزام بالفقرات', 3],
+        [3, 'content', 'دقة المعلومة اللحظية', 4],
+        [3, 'content', 'أداء المذيع وحضوره', 5],
+        // النموذج 4: مسجل
+        [4, 'technical', 'جودة المونتاج وسلاسة الانتقالات', 1],
+        [4, 'technical', 'الهندسة الصوتية والمؤثرات', 2],
+        [4, 'technical', 'نقاء التسجيل وخلوه من الشوائب', 3],
+        [4, 'technical', 'توازن الموسيقى والكلام', 4],
+        [4, 'content', 'بناء السرد وتسلسله', 1],
+        [4, 'content', 'الإيقاع والقدرة على التشويق', 2],
+        [4, 'content', 'جودة الإعداد والبحث', 3],
+        [4, 'content', 'سلامة اللغة والأداء الصوتي', 4],
+    ];
+    $check = $pdo->prepare("SELECT COUNT(*) FROM `{$prefix}criteria` WHERE form_id = ? AND type = ? AND name = ?");
+    $ins   = $pdo->prepare("INSERT INTO `{$prefix}criteria` (form_id, type, name, sort) VALUES (?,?,?,?)");
+    foreach ($criteria as [$fid, $type, $name, $sort]) {
+        $check->execute([$fid, $type, $name]);
+        if ((int)$check->fetchColumn() === 0) $ins->execute([$fid, $type, $name, $sort]);
+    }
+}
+
 /** البيانات الافتراضية */
 function sba_seed(PDO $pdo, string $prefix): void
 {
-    // معايير التقييم الافتراضية
-    $criteria = [
-        ['technical', 'جودة الصوت ونقاء البث', 1],
-        ['technical', 'مستوى الإشارة وثباتها', 2],
-        ['technical', 'التوازن الصوتي (موسيقى/كلام)', 3],
-        ['technical', 'خلو البث من الانقطاعات', 4],
-        ['technical', 'جودة الفواصل والمؤثرات', 5],
-        ['content', 'جودة المحتوى وقيمته', 1],
-        ['content', 'الالتزام بفكرة البرنامج', 2],
-        ['content', 'أداء المذيع وحضوره', 3],
-        ['content', 'سلامة اللغة والأسلوب', 4],
-        ['content', 'التفاعل مع الجمهور', 5],
-    ];
-    $st = $pdo->prepare("INSERT INTO `{$prefix}criteria` (type, name, sort) VALUES (?,?,?)");
-    $exists = (int)$pdo->query("SELECT COUNT(*) FROM `{$prefix}criteria`")->fetchColumn();
-    if ($exists === 0) {
-        foreach ($criteria as $c) $st->execute($c);
-    }
+    sba_seed_forms($pdo, $prefix);
 
     // الإعدادات الافتراضية
     $settings = [

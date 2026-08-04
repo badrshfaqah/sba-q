@@ -23,7 +23,33 @@ if ($isEvaluator) {
     };
     $pending = $filterTasks($tasks['pending']);
     $done    = $filterTasks($tasks['done']);
+
+    /* ترتيب المعلقة: الأقدم بثاً أولاً (الأكثر تأخراً في الأعلى) */
+    usort($pending, fn($x, $y) => strcmp($x['air_date'], $y['air_date']));
+    $today = date('Y-m-d');
+    $lateDays = fn($t) => max(0, (int)((strtotime($today) - strtotime($t['air_date'])) / 86400));
+    $overdue = count(array_filter($pending, fn($t) => $lateDays($t) >= 3));
+    $myAvg = null;
+    if ($done) {
+        $sum = 0;
+        foreach ($done as $d) $sum += (float)$d['score'];
+        $myAvg = $sum / count($done);
+    }
+    $myTotal = count($pending) + count($done);
+    $myRate = $myTotal ? 100 * count($done) / $myTotal : null;
     ?>
+    <div class="kpi-grid">
+        <div class="kpi-card"><div class="kpi-label">مهام معلقة</div>
+            <div class="kpi-value <?= $pending ? 'kpi-bad' : 'kpi-good' ?>"><?= count($pending) ?></div></div>
+        <div class="kpi-card"><div class="kpi-label">متأخرة (3 أيام فأكثر)</div>
+            <div class="kpi-value <?= $overdue ? 'kpi-bad' : 'kpi-good' ?>"><?= $overdue ?></div></div>
+        <div class="kpi-card"><div class="kpi-label">منجزة</div>
+            <div class="kpi-value kpi-good"><?= count($done) ?></div></div>
+        <div class="kpi-card"><div class="kpi-label">نسبة إنجازي</div>
+            <div class="kpi-value"><?= $myRate === null ? '—' : fmt_num($myRate, 0) . '%' ?></div></div>
+        <div class="kpi-card"><div class="kpi-label">متوسط درجاتي</div>
+            <div class="kpi-value"><?= fmt_num($myAvg) ?></div></div>
+    </div>
     <div class="card">
         <div class="card-header">
             <h2>&#128203; مهامي</h2>
@@ -37,15 +63,26 @@ if ($isEvaluator) {
                 <div class="empty-state small"><p>&#127881; لا توجد مهام معلقة — أحسنت!</p></div>
             <?php else: ?>
             <div class="table-wrap"><table class="table">
-                <thead><tr><th>الحلقة</th><th>البرنامج</th><th>الإذاعة</th><th>تاريخ البث</th><th>نوع التقييم</th><th></th></tr></thead>
+                <thead><tr><th>الحلقة</th><th>البرنامج</th><th>الإذاعة</th><th>تاريخ البث</th><th>نوع التقييم</th><th>التأخير</th><th></th></tr></thead>
                 <tbody>
-                <?php foreach ($pending as $t): ?>
-                <tr>
+                <?php foreach ($pending as $t): $late = $lateDays($t); ?>
+                <tr class="<?= $late >= 3 ? 'row-late' : '' ?>">
                     <td><?= e($t['title']) ?></td>
                     <td><?= e($t['program_name']) ?></td>
                     <td><?= e($t['station_name']) ?></td>
                     <td><?= fmt_date($t['air_date']) ?> <?= fmt_time($t['air_time']) ?></td>
                     <td><span class="badge badge-<?= $t['type'] === 'technical' ? 'info' : 'violet' ?>"><?= eval_type_label($t['type']) ?></span></td>
+                    <td>
+                        <?php if (strtotime($t['air_date']) > time()): ?>
+                            <span class="badge badge-muted">لم تُبث بعد</span>
+                        <?php elseif ($late === 0): ?>
+                            <span class="badge badge-success">اليوم</span>
+                        <?php elseif ($late < 3): ?>
+                            <span class="badge badge-warning"><?= $late ?> يوم</span>
+                        <?php else: ?>
+                            <span class="badge badge-danger">متأخرة <?= $late ?> أيام</span>
+                        <?php endif; ?>
+                    </td>
                     <td><a class="btn btn-primary btn-sm" href="<?= e(url('quality', ['a' => 'form', 'episode' => $t['episode_id'], 'type' => $t['type']])) ?>">تقييم الآن</a></td>
                 </tr>
                 <?php endforeach; ?>

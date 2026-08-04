@@ -663,6 +663,52 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 18px 0; }
   .quadrant-grid { grid-template-columns: 1fr; }
 }
 
+/* ---------- الرؤى التلقائية ---------- */
+.insight {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  font-size: 0.92rem;
+  border-right: 4px solid transparent;
+}
+.insight-icon { flex-shrink: 0; }
+.insight-danger  { background: var(--bad-bg); border-right-color: var(--bad); color: #7a1f1f; }
+.insight-warning { background: var(--warn-bg); border-right-color: #fab219; color: #8a5b00; }
+.insight-info    { background: var(--info-bg); border-right-color: var(--primary); color: var(--primary-dark); }
+.insight-success { background: var(--good-bg); border-right-color: var(--good); color: #006300; }
+
+/* ---------- مؤشر الأداء المركب ---------- */
+.spi-row { margin-bottom: 14px; }
+.spi-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.spi-val { font-weight: 700; font-variant-numeric: tabular-nums; display: flex; gap: 8px; align-items: center; }
+.trend { font-size: 0.78rem; font-weight: 700; padding: 1px 8px; border-radius: 999px; }
+.trend.up   { background: var(--good-bg); color: #006300; }
+.trend.down { background: var(--bad-bg); color: #a32424; }
+.trend.flat { background: #efeeea; color: var(--muted); }
+
+/* ---------- مرفقات الحلقة ---------- */
+.media-box {
+  background: var(--page);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin: 10px 0;
+}
+.media-box > label { display: block; font-weight: 600; font-size: 0.88rem; margin-bottom: 6px; }
+.media-box audio { width: 100%; max-width: 480px; display: block; }
+
+/* ---------- صف متأخر ---------- */
+.row-late { background: var(--bad-bg) !important; }
+.row-late:hover { background: #f6d7d7 !important; }
+
+/* ---------- تفاصيل النماذج في الإعدادات ---------- */
+.form-details { border: 1px solid var(--line); border-radius: 8px; margin-bottom: 10px; padding: 0 14px; }
+.form-details summary { padding: 10px 0; cursor: pointer; }
+.form-details[open] summary { border-bottom: 1px solid var(--line); margin-bottom: 8px; }
+
 /* ---------- شاشة التحديث ---------- */
 .update-log {
   background: var(--page);
@@ -710,6 +756,23 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 18px 0; }
   inset: 0;
   background: rgba(0, 0, 0, 0.4);
   z-index: 45;
+}
+
+/* تقييم مريح من الجوال: أهداف لمس كبيرة وزر حفظ ثابت */
+@media (max-width: 640px) {
+  .score-option span { width: 44px; height: 44px; font-size: 1rem; }
+  .score-picker { gap: 6px; }
+  .eval-form .form-actions {
+    position: sticky;
+    bottom: 0;
+    background: var(--surface);
+    padding: 10px 0;
+    border-top: 1px solid var(--line);
+    z-index: 10;
+  }
+  .eval-form .form-actions .btn { flex: 1; padding: 12px; }
+  .media-box audio { max-width: 100%; }
+  .status-option span { padding: 9px 16px; }
 }
 
 @media (max-width: 900px) {

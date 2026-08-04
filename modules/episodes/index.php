@@ -16,6 +16,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canManage && $a === 'save') {
     $title     = input('title');
     $airDate   = input('air_date');
     $airTime   = input('air_time');
+    $formId    = (int)($_POST['form_id'] ?? 0) ?: null;   // فارغ = وراثة نموذج البرنامج
+    $refLink   = input('ref_link');
     $notes     = input('notes');
     $techEvals    = array_map('intval', $_POST['tech_evaluators'] ?? []);
     $contentEvals = array_map('intval', $_POST['content_evaluators'] ?? []);
@@ -25,15 +27,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canManage && $a === 'save') {
         redirect(url('episodes', $id ? ['a' => 'edit', 'id' => $id] : ['a' => 'add']));
     }
 
+    /* رفع المقطع الصوتي (اختياري) */
+    $audioPath = null;
+    $removeAudio = isset($_POST['remove_audio']);
+    if (!empty($_FILES['audio']['tmp_name'])) {
+        $ext = strtolower(pathinfo($_FILES['audio']['name'], PATHINFO_EXTENSION));
+        $allowed = ['mp3', 'm4a', 'aac', 'wav', 'ogg', 'oga', 'webm'];
+        if (!in_array($ext, $allowed, true)) {
+            flash_set('danger', 'صيغة الملف الصوتي غير مدعومة. المسموح: ' . implode('، ', $allowed));
+            redirect(url('episodes', $id ? ['a' => 'edit', 'id' => $id] : ['a' => 'add']));
+        }
+        if ($_FILES['audio']['size'] > 80 * 1024 * 1024) {
+            flash_set('danger', 'حجم الملف الصوتي يتجاوز الحد (80MB)');
+            redirect(url('episodes', $id ? ['a' => 'edit', 'id' => $id] : ['a' => 'add']));
+        }
+        $dir = SBA_ROOT . '/uploads/audio';
+        if (!is_dir($dir)) @mkdir($dir, 0755, true);
+        $fname = 'ep_' . date('Ymd_His') . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
+        if (!move_uploaded_file($_FILES['audio']['tmp_name'], $dir . '/' . $fname)) {
+            flash_set('danger', 'تعذر حفظ الملف الصوتي — تحقق من صلاحيات مجلد uploads');
+            redirect(url('episodes', $id ? ['a' => 'edit', 'id' => $id] : ['a' => 'add']));
+        }
+        $audioPath = 'uploads/audio/' . $fname;
+    }
+
     $pdo = db();
     if ($id) {
-        $st = $pdo->prepare('UPDATE ' . tbl('episodes') . ' SET program_id=?, title=?, air_date=?, air_time=?, notes=? WHERE id=?');
-        $st->execute([$programId, $title, $airDate, $airTime, $notes ?: null, $id]);
+        // إدارة الملف القديم عند الاستبدال أو الحذف
+        $old = $pdo->prepare('SELECT audio_path FROM ' . tbl('episodes') . ' WHERE id=?');
+        $old->execute([$id]);
+        $oldAudio = (string)$old->fetchColumn();
+        if (($audioPath || $removeAudio) && $oldAudio && is_file(SBA_ROOT . '/' . $oldAudio)) {
+            @unlink(SBA_ROOT . '/' . $oldAudio);
+        }
+        $newAudio = $audioPath ?: ($removeAudio ? null : ($oldAudio ?: null));
+        $st = $pdo->prepare('UPDATE ' . tbl('episodes') . '
+            SET program_id=?, title=?, air_date=?, air_time=?, form_id=?, audio_path=?, ref_link=?, notes=? WHERE id=?');
+        $st->execute([$programId, $title, $airDate, $airTime, $formId, $newAudio, $refLink ?: null, $notes ?: null, $id]);
         audit_log('update', 'episode', $id, 'تعديل حلقة: ' . $title);
         flash_set('success', 'تم تحديث الحلقة');
     } else {
-        $st = $pdo->prepare('INSERT INTO ' . tbl('episodes') . ' (program_id, title, air_date, air_time, notes) VALUES (?,?,?,?,?)');
-        $st->execute([$programId, $title, $airDate, $airTime, $notes ?: null]);
+        $st = $pdo->prepare('INSERT INTO ' . tbl('episodes') . '
+            (program_id, title, air_date, air_time, form_id, audio_path, ref_link, notes) VALUES (?,?,?,?,?,?,?,?)');
+        $st->execute([$programId, $title, $airDate, $airTime, $formId, $audioPath, $refLink ?: null, $notes ?: null]);
         $id = (int)$pdo->lastInsertId();
         audit_log('create', 'episode', $id, 'إضافة حلقة: ' . $title);
         flash_set('success', 'تمت إضافة الحلقة وتعيين المقيمين');
@@ -70,11 +106,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canManage && $a === 'save') {
 /* حذف */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canManage && $a === 'delete') {
     $id = (int)($_POST['id'] ?? 0);
-    $st = db()->prepare('SELECT title FROM ' . tbl('episodes') . ' WHERE id=?');
+    $st = db()->prepare('SELECT title, audio_path FROM ' . tbl('episodes') . ' WHERE id=?');
     $st->execute([$id]);
-    if ($title = $st->fetchColumn()) {
+    if ($row = $st->fetch()) {
+        if ($row['audio_path'] && is_file(SBA_ROOT . '/' . $row['audio_path'])) {
+            @unlink(SBA_ROOT . '/' . $row['audio_path']);
+        }
         db()->prepare('DELETE FROM ' . tbl('episodes') . ' WHERE id=?')->execute([$id]);
-        audit_log('delete', 'episode', $id, 'حذف حلقة: ' . $title);
+        audit_log('delete', 'episode', $id, 'حذف حلقة: ' . $row['title']);
         flash_set('success', 'تم حذف الحلقة');
     }
     redirect(url('episodes'));
@@ -83,7 +122,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canManage && $a === 'delete') {
 /* نموذج إضافة/تعديل */
 if ($canManage && ($a === 'add' || $a === 'edit')) {
     $episode = ['id' => 0, 'program_id' => (int)($_GET['program'] ?? 0), 'title' => '',
-                'air_date' => date('Y-m-d'), 'air_time' => date('H:00'), 'notes' => ''];
+                'air_date' => date('Y-m-d'), 'air_time' => date('H:00'),
+                'form_id' => null, 'audio_path' => null, 'ref_link' => '', 'notes' => ''];
     $assigned = ['technical' => [], 'content' => []];
     if ($a === 'edit') {
         $st = db()->prepare('SELECT * FROM ' . tbl('episodes') . ' WHERE id=?');
@@ -100,11 +140,12 @@ if ($canManage && ($a === 'add' || $a === 'edit')) {
         WHERE active=1 AND (role IN ("admin","manager") OR perm_technical=1) ORDER BY name')->fetchAll();
     $contentUsers = db()->query('SELECT id, name FROM ' . tbl('users') . '
         WHERE active=1 AND (role IN ("admin","manager") OR perm_content=1) ORDER BY name')->fetchAll();
+    $forms = db()->query('SELECT id, name FROM ' . tbl('eval_forms') . ' WHERE active=1 ORDER BY id')->fetchAll();
 
     layout_header($episode['id'] ? 'تعديل حلقة' : 'إضافة حلقة');
     ?>
     <div class="card card-narrow">
-        <form method="post" action="<?= e(url('episodes', ['a' => 'save'])) ?>">
+        <form method="post" action="<?= e(url('episodes', ['a' => 'save'])) ?>" enctype="multipart/form-data">
             <?= csrf_field() ?>
             <input type="hidden" name="id" value="<?= (int)$episode['id'] ?>">
             <div class="form-group">
@@ -131,6 +172,34 @@ if ($canManage && ($a === 'add' || $a === 'edit')) {
                     <label>وقت البث (24 ساعة) *</label>
                     <input type="time" name="air_time" value="<?= e(substr($episode['air_time'], 0, 5)) ?>" required>
                 </div>
+            </div>
+            <div class="form-group">
+                <label>نموذج التقييم</label>
+                <select name="form_id">
+                    <option value="0">— وراثة نموذج البرنامج (أو القياسي) —</option>
+                    <?php foreach ($forms as $f): ?>
+                    <option value="<?= (int)$f['id'] ?>" <?= (int)($episode['form_id'] ?? 0) === (int)$f['id'] ? 'selected' : '' ?>>
+                        <?= e($f['name']) ?>
+                    </option>
+                    <?php endforeach; ?>
+                </select>
+                <small class="muted">اختر النموذج المناسب لطبيعة الحلقة (حواري مع ضيف، بث مباشر، مسجل...)</small>
+            </div>
+            <div class="form-group">
+                <label>المقطع الصوتي للحلقة (اختياري — mp3 / m4a / wav)</label>
+                <?php if (!empty($episode['audio_path']) && is_file(SBA_ROOT . '/' . $episode['audio_path'])): ?>
+                <div class="media-box">
+                    <audio controls preload="none" src="<?= e($episode['audio_path']) ?>"></audio>
+                    <label class="checkbox-label"><input type="checkbox" name="remove_audio"> حذف المقطع الحالي</label>
+                </div>
+                <?php endif; ?>
+                <input type="file" name="audio" accept=".mp3,.m4a,.aac,.wav,.ogg,.oga,.webm,audio/*">
+                <small class="muted">يستمع له المقيّم أثناء التقييم مباشرة من المنصة (حتى 80MB)</small>
+            </div>
+            <div class="form-group">
+                <label>رابط أو مرجع الحلقة (اختياري)</label>
+                <input type="text" name="ref_link" value="<?= e($episode['ref_link'] ?? '') ?>"
+                       placeholder="رابط خارجي https://... أو عنوان الحلقة في النظام الداخلي">
             </div>
             <div class="form-group">
                 <label>ملاحظات</label>
@@ -237,6 +306,22 @@ if ($a === 'view') {
             <div><span class="muted">تاريخ البث:</span> <?= fmt_date($episode['air_date']) ?></div>
             <div><span class="muted">وقت البث:</span> <?= fmt_time($episode['air_time']) ?></div>
         </div>
+        <?php if (!empty($episode['audio_path']) && is_file(SBA_ROOT . '/' . $episode['audio_path'])): ?>
+        <div class="media-box">
+            <label>&#127911; المقطع الصوتي:</label>
+            <audio controls preload="none" src="<?= e($episode['audio_path']) ?>"></audio>
+        </div>
+        <?php endif; ?>
+        <?php if (!empty($episode['ref_link'])): ?>
+        <div class="media-box">
+            <label>&#128279; المرجع:</label>
+            <?php if (preg_match('#^https?://#i', $episode['ref_link'])): ?>
+                <a href="<?= e($episode['ref_link']) ?>" target="_blank" rel="noopener" dir="ltr"><?= e($episode['ref_link']) ?></a>
+            <?php else: ?>
+                <span><?= e($episode['ref_link']) ?></span>
+            <?php endif; ?>
+        </div>
+        <?php endif; ?>
         <?php if ($episode['notes']): ?><p class="muted"><?= e($episode['notes']) ?></p><?php endif; ?>
     </div>
 

@@ -57,12 +57,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $a === 'save') {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $a === 'criterion_add') {
     $name = input('name');
     $type = input('type') === 'content' ? 'content' : 'technical';
+    $formId = max(1, (int)($_POST['form_id'] ?? 1));
     if ($name !== '') {
-        $st = db()->prepare('INSERT INTO ' . tbl('criteria') . ' (type, name, sort) VALUES (?,?,
-            (SELECT COALESCE(MAX(c2.sort),0)+1 FROM ' . tbl('criteria') . ' c2 WHERE c2.type=?))');
-        $st->execute([$type, $name, $type]);
+        $st = db()->prepare('INSERT INTO ' . tbl('criteria') . ' (form_id, type, name, sort) VALUES (?,?,?,
+            (SELECT COALESCE(MAX(c2.sort),0)+1 FROM ' . tbl('criteria') . ' c2 WHERE c2.type=? AND c2.form_id=?))');
+        $st->execute([$formId, $type, $name, $type, $formId]);
         audit_log('create', 'criterion', (int)db()->lastInsertId(), 'إضافة معيار: ' . $name);
         flash_set('success', 'تمت إضافة المعيار');
+    }
+    redirect(url('settings'));
+}
+
+/* إضافة نموذج تقييم جديد */
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $a === 'form_add') {
+    $name = input('name');
+    if ($name !== '') {
+        try {
+            $st = db()->prepare('INSERT INTO ' . tbl('eval_forms') . ' (name, description) VALUES (?,?)');
+            $st->execute([$name, input('description') ?: null]);
+            audit_log('create', 'eval_form', (int)db()->lastInsertId(), 'إضافة نموذج تقييم: ' . $name);
+            flash_set('success', 'تمت إضافة النموذج — أضف الآن معاييره الفنية ومعايير المحتوى');
+        } catch (PDOException $e) {
+            flash_set('danger', 'يوجد نموذج بنفس الاسم');
+        }
     }
     redirect(url('settings'));
 }
@@ -76,7 +93,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $a === 'criterion_toggle') {
     redirect(url('settings'));
 }
 
-$criteria = db()->query('SELECT * FROM ' . tbl('criteria') . ' ORDER BY type, sort, id')->fetchAll();
+$criteria = db()->query('SELECT c.*, f.name AS form_name FROM ' . tbl('criteria') . ' c
+    LEFT JOIN ' . tbl('eval_forms') . ' f ON f.id = c.form_id
+    ORDER BY c.form_id, c.type, c.sort, c.id')->fetchAll();
+$evalForms = db()->query('SELECT * FROM ' . tbl('eval_forms') . ' ORDER BY id')->fetchAll();
 $wt = (int)setting('weight_technical', 50);
 $wc = (int)setting('weight_content', 50);
 
@@ -137,35 +157,59 @@ layout_header('الإعدادات');
     </div>
 
     <div class="card">
-        <div class="card-header"><h2>معايير التقييم</h2></div>
+        <div class="card-header"><h2>نماذج التقييم ومعاييرها</h2></div>
+        <p class="muted">لكل طبيعة برنامج نموذج بمعاييره الخاصة (فني + محتوى). يُختار النموذج عند إنشاء
+           البرنامج أو الحلقة، فيظهر للمقيّم المعايير المناسبة تلقائياً.</p>
+
+        <form method="post" action="<?= e(url('settings', ['a' => 'form_add'])) ?>" class="inline-add">
+            <?= csrf_field() ?>
+            <input type="text" name="name" placeholder="اسم نموذج جديد (مثال: برنامج رياضي)" required>
+            <button type="submit" class="btn btn-primary btn-sm">+ نموذج</button>
+        </form>
+
         <form method="post" action="<?= e(url('settings', ['a' => 'criterion_add'])) ?>" class="inline-add">
             <?= csrf_field() ?>
+            <select name="form_id">
+                <?php foreach ($evalForms as $f): ?>
+                <option value="<?= (int)$f['id'] ?>"><?= e($f['name']) ?></option>
+                <?php endforeach; ?>
+            </select>
             <select name="type">
                 <option value="technical">فني</option>
                 <option value="content">محتوى</option>
             </select>
             <input type="text" name="name" placeholder="اسم المعيار الجديد" required>
-            <button type="submit" class="btn btn-primary btn-sm">إضافة</button>
+            <button type="submit" class="btn btn-primary btn-sm">+ معيار</button>
         </form>
-        <table class="table">
-            <thead><tr><th>المعيار</th><th>النوع</th><th>الحالة</th><th></th></tr></thead>
-            <tbody>
-            <?php foreach ($criteria as $c): ?>
-            <tr>
-                <td><?= e($c['name']) ?></td>
-                <td><span class="badge badge-<?= $c['type'] === 'technical' ? 'info' : 'violet' ?>"><?= eval_type_label($c['type']) ?></span></td>
-                <td><?= $c['active'] ? '<span class="badge badge-success">فعال</span>' : '<span class="badge badge-muted">موقوف</span>' ?></td>
-                <td>
-                    <form method="post" action="<?= e(url('settings', ['a' => 'criterion_toggle'])) ?>" class="inline-form">
-                        <?= csrf_field() ?>
-                        <input type="hidden" name="id" value="<?= (int)$c['id'] ?>">
-                        <button type="submit" class="btn btn-sm btn-ghost"><?= $c['active'] ? 'إيقاف' : 'تفعيل' ?></button>
-                    </form>
-                </td>
-            </tr>
-            <?php endforeach; ?>
-            </tbody>
-        </table>
+
+        <?php
+        $byForm = [];
+        foreach ($criteria as $c) $byForm[$c['form_id']][] = $c;
+        foreach ($evalForms as $f): $list = $byForm[$f['id']] ?? []; ?>
+        <details class="form-details" <?= (int)$f['id'] === 1 ? 'open' : '' ?>>
+            <summary><strong><?= e($f['name']) ?></strong>
+                <span class="muted">(<?= count($list) ?> معياراً)</span></summary>
+            <table class="table">
+                <thead><tr><th>المعيار</th><th>النوع</th><th>الحالة</th><th></th></tr></thead>
+                <tbody>
+                <?php foreach ($list as $c): ?>
+                <tr>
+                    <td><?= e($c['name']) ?></td>
+                    <td><span class="badge badge-<?= $c['type'] === 'technical' ? 'info' : 'violet' ?>"><?= eval_type_label($c['type']) ?></span></td>
+                    <td><?= $c['active'] ? '<span class="badge badge-success">فعال</span>' : '<span class="badge badge-muted">موقوف</span>' ?></td>
+                    <td>
+                        <form method="post" action="<?= e(url('settings', ['a' => 'criterion_toggle'])) ?>" class="inline-form">
+                            <?= csrf_field() ?>
+                            <input type="hidden" name="id" value="<?= (int)$c['id'] ?>">
+                            <button type="submit" class="btn btn-sm btn-ghost"><?= $c['active'] ? 'إيقاف' : 'تفعيل' ?></button>
+                        </form>
+                    </td>
+                </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </details>
+        <?php endforeach; ?>
         <p class="muted">إيقاف المعيار يخفيه من التقييمات الجديدة فقط، ولا يؤثر على التقييمات السابقة.</p>
     </div>
 </div>

@@ -12,7 +12,7 @@ $type      = ($_GET['type'] ?? $_POST['type'] ?? '') === 'content' ? 'content' :
 require_can($type === 'technical' ? 'eval.technical' : 'eval.content');
 
 /* جلب الحلقة */
-$st = db()->prepare('SELECT e.*, p.name AS program_name, s.name AS station_name
+$st = db()->prepare('SELECT e.*, p.name AS program_name, p.form_id AS program_form_id, s.name AS station_name
     FROM ' . tbl('episodes') . ' e
     JOIN ' . tbl('programs') . ' p ON p.id=e.program_id
     JOIN ' . tbl('stations') . ' s ON s.id=p.station_id WHERE e.id=?');
@@ -22,6 +22,12 @@ if (!$episode) {
     flash_set('danger', 'الحلقة غير موجودة');
     redirect(url('dashboard'));
 }
+
+/* النموذج الفعال: نموذج الحلقة ← نموذج البرنامج ← القياسي */
+$formId = (int)($episode['form_id'] ?: $episode['program_form_id'] ?: 1);
+$st = db()->prepare('SELECT name FROM ' . tbl('eval_forms') . ' WHERE id=?');
+$st->execute([$formId]);
+$formName = (string)($st->fetchColumn() ?: 'النموذج القياسي');
 
 /* التأكد من أن المستخدم معيّن على هذه الحلقة بهذا النوع (المدراء مستثنون) */
 $isAssigned = false;
@@ -40,10 +46,14 @@ $st = db()->prepare('SELECT * FROM ' . tbl('evaluations') . '
 $st->execute([$episodeId, (int)$user['id'], $type]);
 $existing = $st->fetch();
 
-/* المعايير */
-$st = db()->prepare('SELECT * FROM ' . tbl('criteria') . ' WHERE type=? AND active=1 ORDER BY sort, id');
-$st->execute([$type]);
+/* معايير النموذج الفعال (مع الرجوع للقياسي إن كان النموذج فارغاً لهذا الجانب) */
+$st = db()->prepare('SELECT * FROM ' . tbl('criteria') . ' WHERE form_id=? AND type=? AND active=1 ORDER BY sort, id');
+$st->execute([$formId, $type]);
 $criteria = $st->fetchAll();
+if (!$criteria && $formId !== 1) {
+    $st->execute([1, $type]);
+    $criteria = $st->fetchAll();
+}
 
 /* حفظ التقييم */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $a === 'save') {
@@ -101,7 +111,25 @@ layout_header('تقييم ' . eval_type_label($type));
         <div><span class="muted">البرنامج:</span> <?= e($episode['program_name']) ?></div>
         <div><span class="muted">الإذاعة:</span> <?= e($episode['station_name']) ?></div>
         <div><span class="muted">البث:</span> <?= fmt_date($episode['air_date']) ?> <?= fmt_time($episode['air_time']) ?></div>
+        <div><span class="muted">نموذج التقييم:</span> <span class="badge badge-info"><?= e($formName) ?></span></div>
     </div>
+
+    <?php if ($episode['audio_path'] && is_file(SBA_ROOT . '/' . $episode['audio_path'])): ?>
+    <div class="media-box">
+        <label>&#127911; استمع للحلقة أثناء التقييم:</label>
+        <audio controls preload="none" src="<?= e($episode['audio_path']) ?>"></audio>
+    </div>
+    <?php endif; ?>
+    <?php if ($episode['ref_link']): ?>
+    <div class="media-box">
+        <label>&#128279; مرجع الحلقة:</label>
+        <?php if (preg_match('#^https?://#i', $episode['ref_link'])): ?>
+            <a href="<?= e($episode['ref_link']) ?>" target="_blank" rel="noopener" dir="ltr"><?= e($episode['ref_link']) ?></a>
+        <?php else: ?>
+            <span><?= e($episode['ref_link']) ?></span>
+        <?php endif; ?>
+    </div>
+    <?php endif; ?>
 
     <?php if ($existing): ?>
         <div class="alert alert-info">

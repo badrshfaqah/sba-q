@@ -12,23 +12,18 @@ $to   = input('to', date('Y-m-d'));
 if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $from)) $from = date('Y-m-d', strtotime('-29 days'));
 if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $to))   $to = date('Y-m-d');
 
-/* ---------- تدرّج أزرق تسلسلي (لوحة موثّقة وآمنة لعمى الألوان) ---------- */
+/* ---------- تدرّج أحمر: كلما اشتدّ الحمرة اشتدّ الخلل (انخفض الالتزام) ---------- */
 function heat_color(?float $rate): array
 {
-    // [خلفية، لون نص]
+    // [خلفية، لون نص] — فاتح = التزام مرتفع، غامق = خلل شديد
     if ($rate === null) return ['transparent', 'var(--muted)'];
-    $steps = [
-        [0,   '#cde2fb', '#0b0b0b'],
-        [40,  '#9ec5f4', '#0b0b0b'],
-        [60,  '#6da7ec', '#0b0b0b'],
-        [75,  '#3987e5', '#ffffff'],
-        [85,  '#256abf', '#ffffff'],
-        [95,  '#184f95', '#ffffff'],
-        [100, '#0d366b', '#ffffff'],
-    ];
-    $pick = $steps[0];
-    foreach ($steps as $s) { if ($rate >= $s[0]) $pick = $s; }
-    return [$pick[1], $pick[2]];
+    if ($rate >= 95) return ['#fdf3f3', '#7a1f1f'];
+    if ($rate >= 85) return ['#f8d7d7', '#7a1f1f'];
+    if ($rate >= 75) return ['#f0aeae', '#5c1414'];
+    if ($rate >= 60) return ['#e57f7f', '#ffffff'];
+    if ($rate >= 45) return ['#d34f4f', '#ffffff'];
+    if ($rate >= 30) return ['#b23030', '#ffffff'];
+    return ['#7a1f1f', '#ffffff'];
 }
 
 /* ---------- بيانات الالتزام ---------- */
@@ -100,6 +95,52 @@ foreach (station_rankings($from, $to) as $sr) $qualityByStation[$sr['station_id'
 $compByStation = [];
 foreach (compliance_by_station($from, $to) as $cr) $compByStation[$cr['id']] = $cr;
 
+/* ---------- الفترة السابقة المكافئة (لاتجاهات التحسن/التراجع) ---------- */
+$periodDays = max(1, (int)((strtotime($to) - strtotime($from)) / 86400) + 1);
+$prevTo   = date('Y-m-d', strtotime($from . ' -1 day'));
+$prevFrom = date('Y-m-d', strtotime($prevTo . ' -' . ($periodDays - 1) . ' days'));
+
+$prevQuality = [];
+foreach (station_rankings($prevFrom, $prevTo) as $r) $prevQuality[$r['station_id']] = $r['avg'];
+$prevComp = [];
+foreach (compliance_by_station($prevFrom, $prevTo) as $r) $prevComp[$r['id']] = $r['rate'];
+
+/* ---------- مؤشر الأداء المركب SPI = جودة 60% + التزام 40% ---------- */
+function spi(?float $q, ?float $c): ?float
+{
+    if ($q === null && $c === null) return null;
+    if ($q === null) return $c;
+    if ($c === null) return $q * 10;
+    return ($q * 10) * 0.6 + $c * 0.4;
+}
+
+/* ---------- صرامة المقيمين: انحراف كل مقيم عن زملائه على الحلقات المشتركة ---------- */
+$st = db()->prepare('SELECT ev.episode_id, ev.type, ev.user_id, ev.score, u.name
+    FROM ' . tbl('evaluations') . ' ev
+    JOIN ' . tbl('users') . ' u ON u.id = ev.user_id
+    JOIN ' . tbl('episodes') . ' e ON e.id = ev.episode_id
+    WHERE e.air_date >= ? AND e.air_date <= ?');
+$st->execute([$from, $to]);
+$groups = [];
+foreach ($st->fetchAll() as $r) {
+    $groups[$r['episode_id'] . '|' . $r['type']][] = $r;
+}
+$bias = []; // user_id => ['name', 'sum', 'n']
+foreach ($groups as $g) {
+    if (count($g) < 2) continue;
+    $total = array_sum(array_column($g, 'score'));
+    foreach ($g as $r) {
+        $othersAvg = ($total - $r['score']) / (count($g) - 1);
+        $uid = (int)$r['user_id'];
+        $bias[$uid] ??= ['name' => $r['name'], 'sum' => 0.0, 'n' => 0];
+        $bias[$uid]['sum'] += (float)$r['score'] - $othersAvg;
+        $bias[$uid]['n']++;
+    }
+}
+foreach ($bias as &$b) $b['avg'] = $b['sum'] / $b['n'];
+unset($b);
+uasort($bias, fn($x, $y) => abs($y['avg']) <=> abs($x['avg']));
+
 $Q_THRESHOLD = 7.0; $C_THRESHOLD = 80.0;
 $quadrants = ['star' => [], 'quality_only' => [], 'discipline_only' => [], 'critical' => [], 'nodata' => []];
 $allStations = db()->query('SELECT id, name FROM ' . tbl('stations') . ' WHERE active=1 ORDER BY name')->fetchAll();
@@ -113,6 +154,89 @@ foreach ($allStations as $s) {
     elseif ($c >= $C_THRESHOLD)                        $quadrants['discipline_only'][] = $item;
     else                                               $quadrants['critical'][] = $item;
 }
+
+/* ---------- ترتيب المؤشر المركب مع الاتجاه ---------- */
+$spiRows = [];
+foreach ($allStations as $s) {
+    $q = $qualityByStation[$s['id']]['avg'] ?? null;
+    $c = $compByStation[$s['id']]['rate'] ?? null;
+    $now = spi($q, $c);
+    if ($now === null) continue;
+    $prev = spi($prevQuality[$s['id']] ?? null, $prevComp[$s['id']] ?? null);
+    $spiRows[] = ['name' => $s['name'], 'spi' => $now, 'delta' => $prev !== null ? $now - $prev : null];
+}
+usort($spiRows, fn($x, $y) => $y['spi'] <=> $x['spi']);
+
+/* ---------- متوسط فني/محتوى لكل إذاعة (لكشف الفجوات) ---------- */
+$gapByStation = [];
+foreach ($scores as $srow) {
+    $sid = $srow['station_id'];
+    $gapByStation[$sid] ??= ['name' => $srow['station_name'], 'tsum' => 0, 'tn' => 0, 'csum' => 0, 'cn' => 0];
+    if ($srow['tavg'] !== null) { $gapByStation[$sid]['tsum'] += $srow['tavg']; $gapByStation[$sid]['tn']++; }
+    if ($srow['cavg'] !== null) { $gapByStation[$sid]['csum'] += $srow['cavg']; $gapByStation[$sid]['cn']++; }
+}
+
+/* ---------- المهام المتأخرة (3 أيام فأكثر) ---------- */
+$st = db()->prepare('SELECT COUNT(*) FROM ' . tbl('episode_evaluators') . ' a
+    JOIN ' . tbl('episodes') . ' e ON e.id = a.episode_id
+    LEFT JOIN ' . tbl('evaluations') . ' ev
+           ON ev.episode_id = a.episode_id AND ev.user_id = a.user_id AND ev.type = a.type
+    WHERE ev.id IS NULL AND e.air_date <= DATE_SUB(CURDATE(), INTERVAL 3 DAY)
+      AND e.air_date >= ? AND e.air_date <= ?');
+$st->execute([$from, $to]);
+$overdueCount = (int)$st->fetchColumn();
+
+/* ---------- محرك الرؤى التلقائية ---------- */
+$insights = []; // [severity: danger|warning|info|success, text]
+if ($worstTime && $worstTime[1] < 75) {
+    $insights[] = ['danger', 'النقطة الزمنية ' . $worstTime[0] . ' هي الأضعف التزاماً (' . fmt_num($worstTime[1]) . '%) — راجع تشغيل هذه الفترة تحديداً'];
+}
+foreach ($allStations as $s) {
+    $sid = $s['id'];
+    $c = $compByStation[$sid]['rate'] ?? null;
+    $pc = $prevComp[$sid] ?? null;
+    if ($c !== null && $pc !== null) {
+        $d = $c - $pc;
+        if ($d <= -10) $insights[] = ['danger', 'التزام ' . $s['name'] . ' تراجع من ' . fmt_num($pc) . '% إلى ' . fmt_num($c) . '% مقارنة بالفترة السابقة'];
+        elseif ($d >= 10) $insights[] = ['success', 'التزام ' . $s['name'] . ' تحسّن من ' . fmt_num($pc) . '% إلى ' . fmt_num($c) . '% مقارنة بالفترة السابقة'];
+    }
+    $q = $qualityByStation[$sid]['avg'] ?? null;
+    $pq = $prevQuality[$sid] ?? null;
+    if ($q !== null && $pq !== null) {
+        $d = $q - $pq;
+        if ($d <= -1.0) $insights[] = ['warning', 'جودة ' . $s['name'] . ' انخفضت ' . fmt_num(abs($d)) . ' نقطة عن الفترة السابقة (' . fmt_num($pq) . ' ← ' . fmt_num($q) . ')'];
+        elseif ($d >= 1.0) $insights[] = ['success', 'جودة ' . $s['name'] . ' ارتفعت ' . fmt_num($d) . ' نقطة عن الفترة السابقة'];
+    }
+}
+foreach ($gapByStation as $g) {
+    if ($g['tn'] && $g['cn']) {
+        $t = $g['tsum'] / $g['tn']; $c = $g['csum'] / $g['cn'];
+        $gap = $t - $c;
+        if (abs($gap) >= 1.5) {
+            $insights[] = ['info', 'فجوة واضحة في ' . $g['name'] . ': ' .
+                ($gap > 0 ? 'الفني (' . fmt_num($t) . ') يتفوق على المحتوى (' . fmt_num($c) . ') — المشكلة تحريرية لا هندسية'
+                          : 'المحتوى (' . fmt_num($c) . ') يتفوق على الفني (' . fmt_num($t) . ') — المشكلة هندسية لا تحريرية')];
+        }
+    }
+}
+foreach ($bias as $b) {
+    if ($b['n'] >= 3 && abs($b['avg']) >= 1.0) {
+        $insights[] = ['warning', 'المقيم ' . $b['name'] . ' ' .
+            ($b['avg'] > 0 ? 'أكثر تساهلاً' : 'أكثر تشدداً') . ' من زملائه بمتوسط ' .
+            fmt_num(abs($b['avg'])) . ' نقطة على نفس الحلقات (' . $b['n'] . ' مقارنة)'];
+    }
+}
+if ($overdueCount > 0) {
+    $insights[] = ['warning', "هناك $overdueCount مهمة تقييم متأخرة أكثر من 3 أيام — راجع شاشة متابعة الموظفين"];
+}
+if ($quadrants['critical']) {
+    $insights[] = ['danger', 'إذاعات في ربع التدخل العاجل: ' . implode('، ', array_column($quadrants['critical'], 'name'))];
+}
+if ($spiRows) {
+    $insights[] = ['success', $spiRows[0]['name'] . ' تتصدر مؤشر الأداء المركب (' . fmt_num($spiRows[0]['spi']) . ' من 100)'];
+}
+$sevOrder = ['danger' => 0, 'warning' => 1, 'info' => 2, 'success' => 3];
+usort($insights, fn($x, $y) => $sevOrder[$x[0]] <=> $sevOrder[$y[0]]);
 
 layout_header('ذكاء الأعمال');
 ?>
@@ -167,6 +291,73 @@ layout_header('ذكاء الأعمال');
             <?= $worstTime ? e($worstTime[0]) . ' <small>(' . fmt_num($worstTime[1]) . '%)</small>' : '—' ?></div></div>
 </div>
 
+<div class="card insights-card">
+    <div class="card-header"><h2>&#129302; الرؤى التلقائية</h2>
+        <span class="muted">مقارنةً بالفترة السابقة المكافئة (<?= e($prevFrom) ?> — <?= e($prevTo) ?>)</span></div>
+    <?php if (!$insights): ?>
+        <div class="empty-state small"><p>لا توجد رؤى بعد — تتولد تلقائياً كلما زادت البيانات</p></div>
+    <?php else: ?>
+        <?php foreach ($insights as [$sev, $text]): ?>
+        <div class="insight insight-<?= $sev ?>">
+            <span class="insight-icon"><?= ['danger' => '&#128680;', 'warning' => '&#9888;&#65039;', 'info' => '&#128161;', 'success' => '&#127942;'][$sev] ?></span>
+            <span><?= e($text) ?></span>
+        </div>
+        <?php endforeach; ?>
+    <?php endif; ?>
+</div>
+
+<div class="grid-2">
+    <div class="card">
+        <div class="card-header"><h2>&#129351; مؤشر الأداء المركب (SPI)</h2>
+            <span class="muted">جودة 60% + التزام 40%</span></div>
+        <?php if (!$spiRows): ?><div class="empty-state small"><p>لا توجد بيانات كافية</p></div>
+        <?php else: foreach ($spiRows as $i => $r): ?>
+        <div class="spi-row">
+            <div class="spi-head">
+                <strong><?= ($i === 0 ? '&#129351; ' : ($i === 1 ? '&#129352; ' : ($i === 2 ? '&#129353; ' : ''))) . e($r['name']) ?></strong>
+                <span class="spi-val">
+                    <?= fmt_num($r['spi']) ?>
+                    <?php if ($r['delta'] !== null): ?>
+                        <?php if ($r['delta'] >= 1): ?><span class="trend up">&#9650; <?= fmt_num($r['delta']) ?></span>
+                        <?php elseif ($r['delta'] <= -1): ?><span class="trend down">&#9660; <?= fmt_num(abs($r['delta'])) ?></span>
+                        <?php else: ?><span class="trend flat">&#8212;</span><?php endif; ?>
+                    <?php endif; ?>
+                </span>
+            </div>
+            <div class="progress"><div class="progress-fill <?= $r['spi'] >= 80 ? 'full' : ($r['spi'] < 60 ? 'low' : '') ?>"
+                 style="width:<?= round($r['spi']) ?>%"></div></div>
+        </div>
+        <?php endforeach; endif; ?>
+    </div>
+
+    <div class="card">
+        <div class="card-header"><h2>&#9878;&#65039; عدالة التقييم (صرامة المقيمين)</h2></div>
+        <p class="muted">انحراف كل مقيم عن متوسط زملائه على الحلقات المشتركة نفسها —
+           موجب = أكثر تساهلاً، سالب = أكثر تشدداً.</p>
+        <?php if (!$bias): ?><div class="empty-state small"><p>يتطلب مقيّمَين فأكثر على نفس الحلقة</p></div>
+        <?php else: ?>
+        <table class="table">
+            <thead><tr><th>المقيم</th><th>الانحراف</th><th>المقارنات</th><th>القراءة</th></tr></thead>
+            <tbody>
+            <?php foreach ($bias as $b): ?>
+            <tr>
+                <td><strong><?= e($b['name']) ?></strong></td>
+                <td dir="ltr" style="text-align:right"><?= ($b['avg'] >= 0 ? '+' : '−') . fmt_num(abs($b['avg']), 2) ?></td>
+                <td><?= (int)$b['n'] ?></td>
+                <td>
+                    <?php if (abs($b['avg']) < 0.5): ?><span class="badge badge-success">متوازن</span>
+                    <?php elseif ($b['avg'] >= 1): ?><span class="badge badge-warning">متساهل</span>
+                    <?php elseif ($b['avg'] <= -1): ?><span class="badge badge-warning">متشدد</span>
+                    <?php else: ?><span class="badge badge-muted">طبيعي</span><?php endif; ?>
+                </td>
+            </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+        <?php endif; ?>
+    </div>
+</div>
+
 <div class="card">
     <div class="card-header"><h2>&#127919; التحليل الرباعي: الجودة × الالتزام</h2>
         <span class="muted">العتبات: جودة ≥ <?= $Q_THRESHOLD ?> والتزام ≥ <?= $C_THRESHOLD ?>%</span></div>
@@ -217,11 +408,11 @@ layout_header('ذكاء الأعمال');
         <div class="empty-state small"><p>لا توجد بيانات التزام في الفترة</p></div>
     <?php else: ?>
     <div class="heat-legend">
-        <span>منخفض</span>
-        <?php foreach (['#cde2fb','#9ec5f4','#6da7ec','#3987e5','#256abf','#184f95','#0d366b'] as $c): ?>
+        <span>التزام مرتفع</span>
+        <?php foreach (['#fdf3f3','#f8d7d7','#f0aeae','#e57f7f','#d34f4f','#b23030','#7a1f1f'] as $c): ?>
             <i style="background:<?= $c ?>"></i>
         <?php endforeach; ?>
-        <span>مرتفع (معدل الالتزام)</span>
+        <span>خلل شديد</span>
     </div>
     <div class="table-wrap"><table class="table heatmap">
         <thead><tr><th class="time-col">الوقت \ اليوم</th>

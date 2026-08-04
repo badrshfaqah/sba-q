@@ -12,19 +12,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canManage && $a === 'save') {
     $name      = input('name');
     $stationId = (int)($_POST['station_id'] ?? 0);
     $presenter = input('presenter');
+    $formId    = (int)($_POST['form_id'] ?? 0) ?: null;
     $active    = isset($_POST['active']) ? 1 : 0;
     if ($name === '' || !$stationId) {
         flash_set('danger', 'اسم البرنامج والإذاعة مطلوبان');
         redirect(url('programs', $id ? ['a' => 'edit', 'id' => $id] : ['a' => 'add']));
     }
     if ($id) {
-        $st = db()->prepare('UPDATE ' . tbl('programs') . ' SET name=?, station_id=?, presenter=?, active=? WHERE id=?');
-        $st->execute([$name, $stationId, $presenter ?: null, $active, $id]);
+        $st = db()->prepare('UPDATE ' . tbl('programs') . ' SET name=?, station_id=?, presenter=?, form_id=?, active=? WHERE id=?');
+        $st->execute([$name, $stationId, $presenter ?: null, $formId, $active, $id]);
         audit_log('update', 'program', $id, 'تعديل برنامج: ' . $name);
         flash_set('success', 'تم تحديث البرنامج');
     } else {
-        $st = db()->prepare('INSERT INTO ' . tbl('programs') . ' (name, station_id, presenter, active) VALUES (?,?,?,?)');
-        $st->execute([$name, $stationId, $presenter ?: null, $active]);
+        $st = db()->prepare('INSERT INTO ' . tbl('programs') . ' (name, station_id, presenter, form_id, active) VALUES (?,?,?,?,?)');
+        $st->execute([$name, $stationId, $presenter ?: null, $formId, $active]);
         audit_log('create', 'program', (int)db()->lastInsertId(), 'إضافة برنامج: ' . $name);
         flash_set('success', 'تمت إضافة البرنامج');
     }
@@ -48,7 +49,8 @@ $stations = db()->query('SELECT id, name FROM ' . tbl('stations') . ' WHERE acti
 
 /* نموذج */
 if ($canManage && ($a === 'add' || $a === 'edit')) {
-    $program = ['id' => 0, 'name' => '', 'station_id' => 0, 'presenter' => '', 'active' => 1];
+    $program = ['id' => 0, 'name' => '', 'station_id' => 0, 'presenter' => '', 'form_id' => null, 'active' => 1];
+    $forms = db()->query('SELECT id, name FROM ' . tbl('eval_forms') . ' WHERE active=1 ORDER BY id')->fetchAll();
     if ($a === 'edit') {
         $st = db()->prepare('SELECT * FROM ' . tbl('programs') . ' WHERE id=?');
         $st->execute([(int)($_GET['id'] ?? 0)]);
@@ -79,6 +81,18 @@ if ($canManage && ($a === 'add' || $a === 'edit')) {
             <div class="form-group">
                 <label>مقدم البرنامج (اختياري)</label>
                 <input type="text" name="presenter" value="<?= e($program['presenter']) ?>">
+            </div>
+            <div class="form-group">
+                <label>نموذج التقييم الافتراضي للبرنامج</label>
+                <select name="form_id">
+                    <option value="0">— النموذج القياسي —</option>
+                    <?php foreach ($forms as $f): ?>
+                    <option value="<?= (int)$f['id'] ?>" <?= (int)($program['form_id'] ?? 0) === (int)$f['id'] ? 'selected' : '' ?>>
+                        <?= e($f['name']) ?>
+                    </option>
+                    <?php endforeach; ?>
+                </select>
+                <small class="muted">حسب طبيعة البرنامج: حواري مع ضيوف / بث مباشر / مسجل — ويمكن تجاوزه لكل حلقة</small>
             </div>
             <div class="form-group">
                 <label class="checkbox-label">
