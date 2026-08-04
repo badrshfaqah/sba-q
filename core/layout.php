@@ -16,6 +16,7 @@ function layout_nav_items(): array
     if (can('settings.manage'))  $items[] = ['settings',   'الإعدادات',        '&#9881;&#65039;'];
     if (can('audit.view'))       $items[] = ['audit',      'سجل العمليات',     '&#128220;'];
     if (can('backup.manage'))    $items[] = ['backup',     'النسخ الاحتياطي',  '&#128190;'];
+    if (can('update.manage'))    $items[] = ['update',     'تحديث النظام',     '&#128260;'];
     return $items;
 }
 

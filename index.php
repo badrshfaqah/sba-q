@@ -25,6 +25,7 @@ $modules = [
     'settings'   => 'settings.manage',
     'audit'      => 'audit.view',
     'backup'     => 'backup.manage',
+    'update'     => 'update.manage',
 ];
 
 $m = $_GET['m'] ?? 'dashboard';

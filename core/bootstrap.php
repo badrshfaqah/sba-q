@@ -4,8 +4,9 @@
  * منصة متابعة جودة البث والمحتوى الإذاعي
  */
 define('SBA', true);
-define('SBA_VERSION', '1.0.0');
 define('SBA_ROOT', dirname(__DIR__));
+// رقم الإصدار يُقرأ من ملف VERSION (يتحدث تلقائياً مع كل تحديث)
+define('SBA_VERSION', trim((string)@file_get_contents(SBA_ROOT . '/VERSION')) ?: '1.0.0');
 
 // إعدادات الجلسة الآمنة
 if (session_status() === PHP_SESSION_NONE) {

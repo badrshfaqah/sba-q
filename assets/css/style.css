@@ -565,6 +565,28 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 18px 0; }
 }
 .pres-footer p { margin: 8px 0; }
 
+/* ---------- شاشة التحديث ---------- */
+.update-log {
+  background: var(--page);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 14px;
+  font-size: 0.9rem;
+}
+.update-log-line { padding: 3px 0; color: #006300; }
+.update-steps { padding-right: 20px; font-size: 0.9rem; color: var(--ink-2); }
+.update-steps li { margin-bottom: 6px; }
+.update-steps code {
+  background: var(--page);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 0.85em;
+  direction: ltr;
+  display: inline-block;
+}
+
 /* ---------- الطباعة ---------- */
 .print-header { display: none; }
 @media print {
