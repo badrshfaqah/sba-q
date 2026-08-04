@@ -12,6 +12,8 @@ function layout_nav_items(): array
                                  $items[] = ['episodes',   'الحلقات والتقييم', '&#127911;'];
     if (can('compliance.view'))  $items[] = ['compliance', 'التزام البث',      '&#128337;'];
     if (can('reports.view'))     $items[] = ['reports',    'التقارير',         '&#128202;'];
+    if (can('reports.view'))     $items[] = ['analytics',  'ذكاء الأعمال',     '&#128200;'];
+    if (can('evaluators.assign'))$items[] = ['followup',   'متابعة الموظفين',  '&#127919;'];
     if (can('users.manage'))     $items[] = ['users',      'المستخدمون',       '&#128101;'];
     if (can('settings.manage'))  $items[] = ['settings',   'الإعدادات',        '&#9881;&#65039;'];
     if (can('audit.view'))       $items[] = ['audit',      'سجل العمليات',     '&#128220;'];
@@ -70,6 +72,17 @@ function layout_header(string $title = ''): void
             <h1 class="page-title"><?= e($title) ?></h1>
             <div class="topbar-clock" id="topbarClock"><?= date('Y-m-d H:i') ?></div>
         </header>
+        <?php if (is_impersonating()): $imp = impersonator(); ?>
+        <div class="impersonation-bar">
+            <span>&#128373;&#65039; أنت الآن تتصفح بالنيابة عن <strong><?= e($user['name'] ?? '') ?></strong>
+                (حسابك الأصلي: <?= e($imp['name'] ?? '') ?>)</span>
+            <form method="post" action="index.php" class="inline-form">
+                <?= csrf_field() ?>
+                <input type="hidden" name="stop_impersonation" value="1">
+                <button type="submit" class="btn btn-sm btn-ghost">&#8592; العودة لحسابي</button>
+            </form>
+        </div>
+        <?php endif; ?>
         <main class="content">
         <?php foreach (flash_get() as $f): ?>
             <div class="alert alert-<?= e($f['type']) ?>"><?= e($f['msg']) ?></div>

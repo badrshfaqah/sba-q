@@ -29,6 +29,7 @@ function audit_action_label(string $action): string
         'backup'  => 'نسخ احتياطي',
         'restore' => 'استعادة',
         'evaluate'=> 'تقييم',
+        'impersonate' => 'دخول بالنيابة',
     ];
     return $map[$action] ?? $action;
 }

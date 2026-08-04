@@ -9,6 +9,13 @@ require __DIR__ . '/core/layout.php';
 require_login();
 csrf_check();
 
+/* إنهاء الدخول بالنيابة (متاح للعضو المُتقمَّص كي يعود المدير لحسابه) */
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['stop_impersonation'])) {
+    impersonate_end();
+    flash_set('success', 'تمت العودة إلى حسابك');
+    redirect('index.php');
+}
+
 /**
  * سجل الموديولات: [ المفتاح => الصلاحية المطلوبة ]
  * لإضافة ميزة جديدة: أنشئ مجلداً في modules/ وأضف سطراً هنا
@@ -21,6 +28,8 @@ $modules = [
     'quality'    => null,
     'compliance' => 'compliance.view',
     'reports'    => 'reports.view',
+    'analytics'  => 'reports.view',
+    'followup'   => 'evaluators.assign',
     'users'      => 'users.manage',
     'settings'   => 'settings.manage',
     'audit'      => 'audit.view',

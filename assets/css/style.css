@@ -565,6 +565,104 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 18px 0; }
 }
 .pres-footer p { margin: 8px 0; }
 
+/* ---------- شريط الدخول بالنيابة ---------- */
+.impersonation-bar {
+  background: var(--warn-bg);
+  border-bottom: 2px solid var(--warn);
+  color: #8a5b00;
+  padding: 8px 22px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 0.9rem;
+}
+
+/* ---------- الخرائط الحرارية ---------- */
+.heatmap td.heat-cell {
+  text-align: center;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  min-width: 52px;
+  border: 2px solid var(--surface);
+  border-radius: 6px;
+  font-size: 0.82rem;
+}
+.heat-legend {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 10px;
+  font-size: 0.8rem;
+  color: var(--ink-2);
+}
+.heat-legend i { width: 22px; height: 12px; border-radius: 3px; display: inline-block; }
+.heat-legend span { margin: 0 6px; }
+
+/* ---------- التحليل الرباعي ---------- */
+.quadrant-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.quadrant {
+  border-radius: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+}
+.quadrant h3 { font-size: 0.95rem; margin-bottom: 10px; }
+.quadrant h3 .muted { display: block; font-size: 0.75rem; font-weight: 500; }
+.q-star       { background: var(--good-bg); border-color: #bfe3bf; }
+.q-quality    { background: var(--info-bg); border-color: #b7d3f6; }
+.q-discipline { background: var(--warn-bg); border-color: #f3ddae; }
+.q-critical   { background: var(--bad-bg); border-color: #f1c1c1; }
+.q-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--surface);
+  border-radius: 7px;
+  padding: 6px 12px;
+  margin-bottom: 6px;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.q-item span { font-weight: 500; font-size: 0.8rem; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.q-hint { font-size: 0.78rem; color: var(--ink-2); margin-top: 8px; }
+
+/* ---------- بطاقات البعدين ---------- */
+.dim-card {
+  border-radius: 10px;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+}
+.dim-card h3 { margin-bottom: 8px; font-size: 1rem; }
+.dim-card p { font-size: 0.88rem; color: var(--ink-2); margin-bottom: 4px; }
+.dim-quality    { background: var(--info-bg); border-color: #b7d3f6; }
+.dim-compliance { background: var(--good-bg); border-color: #bfe3bf; }
+
+/* ---------- شريط التقدم ---------- */
+.progress {
+  height: 10px;
+  background: var(--line);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-bottom: 2px;
+}
+.progress-fill {
+  height: 100%;
+  background: var(--primary);
+  border-radius: 999px;
+  transition: width 0.3s;
+}
+.progress-fill.full { background: var(--good); }
+.progress-fill.low  { background: var(--bad); }
+
+@media (max-width: 900px) {
+  .quadrant-grid { grid-template-columns: 1fr; }
+}
+
 /* ---------- شاشة التحديث ---------- */
 .update-log {
   background: var(--page);

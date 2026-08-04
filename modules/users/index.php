@@ -65,6 +65,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $a === 'save') {
     redirect(url('users'));
 }
 
+/* الدخول بالنيابة عن عضو */
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $a === 'impersonate') {
+    $id = (int)($_POST['id'] ?? 0);
+    if (impersonate_start($id)) {
+        redirect('index.php');
+    }
+    flash_set('danger', 'تعذر الدخول بالنيابة — تأكد أن الحساب نشط وأنك لست في جلسة نيابة حالياً');
+    redirect(url('users'));
+}
+
 /* حذف */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $a === 'delete') {
     $id = (int)($_POST['id'] ?? 0);
@@ -178,6 +188,14 @@ layout_header('المستخدمون');
             <td><?= $u['active'] ? '<span class="badge badge-success">نشط</span>' : '<span class="badge badge-muted">موقوف</span>' ?></td>
             <td class="actions-cell">
                 <a class="btn btn-sm btn-ghost" href="<?= e(url('users', ['a' => 'edit', 'id' => $u['id']])) ?>">تعديل</a>
+                <?php if ((int)$u['id'] !== (int)$me['id'] && $u['active'] && !is_impersonating()): ?>
+                <form method="post" action="<?= e(url('users', ['a' => 'impersonate'])) ?>" class="inline-form"
+                      onsubmit="return confirm('ستدخل بالنيابة عن <?= e($u['name']) ?> وترى النظام كما يراه تماماً. متابعة؟')">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="id" value="<?= (int)$u['id'] ?>">
+                    <button type="submit" class="btn btn-sm btn-ghost">&#128373;&#65039; دخول بالنيابة</button>
+                </form>
+                <?php endif; ?>
                 <?php if ((int)$u['id'] !== (int)$me['id']): ?>
                 <form method="post" action="<?= e(url('users', ['a' => 'delete'])) ?>" class="inline-form"
                       onsubmit="return confirm('حذف المستخدم سيحذف تقييماته أيضاً. متابعة؟')">

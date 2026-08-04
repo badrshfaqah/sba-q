@@ -44,6 +44,51 @@ function auth_logout(): void
     session_destroy();
 }
 
+/* ---------- الدخول بالنيابة عن عضو (Impersonation) ---------- */
+
+/** هل الجلسة الحالية بالنيابة عن عضو؟ */
+function is_impersonating(): bool
+{
+    return !empty($_SESSION['impersonator_id']);
+}
+
+/** بيانات المدير الأصلي أثناء النيابة */
+function impersonator(): ?array
+{
+    if (!is_impersonating()) return null;
+    $st = db()->prepare('SELECT id, name FROM ' . tbl('users') . ' WHERE id = ?');
+    $st->execute([(int)$_SESSION['impersonator_id']]);
+    return $st->fetch() ?: null;
+}
+
+/** بدء الدخول بالنيابة (مدير النظام فقط، بدون تسلسل) */
+function impersonate_start(int $targetId): bool
+{
+    $u = current_user();
+    if (!$u || $u['role'] !== 'admin' || is_impersonating()) return false;
+    if ((int)$u['id'] === $targetId) return false;
+
+    $st = db()->prepare('SELECT id, name FROM ' . tbl('users') . ' WHERE id = ? AND active = 1');
+    $st->execute([$targetId]);
+    $target = $st->fetch();
+    if (!$target) return false;
+
+    audit_log('impersonate', 'user', $targetId, 'بدء الدخول بالنيابة عن: ' . $target['name']);
+    $_SESSION['impersonator_id'] = (int)$u['id'];
+    $_SESSION['uid'] = $targetId;
+    return true;
+}
+
+/** إنهاء النيابة والعودة لحساب المدير */
+function impersonate_end(): void
+{
+    if (!is_impersonating()) return;
+    $memberId = (int)($_SESSION['uid'] ?? 0);
+    $_SESSION['uid'] = (int)$_SESSION['impersonator_id'];
+    unset($_SESSION['impersonator_id']);
+    audit_log('impersonate', 'user', $memberId, 'إنهاء الدخول بالنيابة والعودة لحساب المدير');
+}
+
 /** إلزام تسجيل الدخول */
 function require_login(): void
 {
