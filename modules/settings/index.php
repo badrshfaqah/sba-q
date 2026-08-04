@@ -10,13 +10,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $a === 'save') {
     $wt = (int)input('weight_technical', 50);
     $wc = (int)input('weight_content', 50);
     $perPage = max(5, min(100, (int)input('per_page', 20)));
+    $updateRepo   = input('update_repo');
+    $updateBranch = input('update_branch');
+    $updateToken  = trim((string)($_POST['update_token'] ?? ''));
     if ($wt + $wc !== 100) {
         flash_set('danger', 'مجموع وزني التقييم الفني والمحتوى يجب أن يساوي 100%');
+    } elseif ($updateRepo !== '' && !preg_match('#^[\w.-]+/[\w.-]+$#', $updateRepo)) {
+        flash_set('danger', 'صيغة المستودع غير صحيحة — المطلوب: username/repo');
     } else {
         setting_save('site_name', $siteName ?: 'منصة متابعة جودة البث والمحتوى الإذاعي');
         setting_save('weight_technical', $wt);
         setting_save('weight_content', $wc);
         setting_save('per_page', $perPage);
+        if ($updateRepo !== '')   setting_save('update_repo', $updateRepo);
+        if ($updateBranch !== '') setting_save('update_branch', $updateBranch);
+        // الرمز: فارغ = إبقاء الحالي، وكلمة REMOVE = حذفه
+        if ($updateToken === 'REMOVE') {
+            setting_save('update_token', '');
+        } elseif ($updateToken !== '') {
+            setting_save('update_token', $updateToken);
+        }
         audit_log('update', 'settings', 0, "تحديث الإعدادات (فني $wt% / محتوى $wc%)");
         flash_set('success', 'تم حفظ الإعدادات');
     }
@@ -75,6 +88,32 @@ layout_header('الإعدادات');
             <div class="form-group">
                 <label>عدد الصفوف في الصفحة</label>
                 <input type="number" name="per_page" value="<?= (int)setting('per_page', 20) ?>" min="5" max="100">
+            </div>
+            <hr>
+            <h3 class="section-title">إعدادات التحديث من GitHub</h3>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>المستودع (username/repo)</label>
+                    <input type="text" name="update_repo" value="<?= e(setting('update_repo', 'badrshfaqah/sba-q')) ?>" dir="ltr">
+                </div>
+                <div class="form-group">
+                    <label>الفرع</label>
+                    <input type="text" name="update_branch" value="<?= e(setting('update_branch', 'main')) ?>" dir="ltr">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>
+                    رمز الوصول GitHub Token
+                    <?= trim((string)setting('update_token', '')) !== ''
+                        ? '<span class="badge badge-success">مسجّل ✓</span>'
+                        : '<span class="badge badge-muted">غير مسجّل — مطلوب فقط للمستودع الخاص</span>' ?>
+                </label>
+                <input type="password" name="update_token" value="" dir="ltr" autocomplete="new-password"
+                       placeholder="اتركه فارغاً للإبقاء على الحالي — أو اكتب REMOVE لحذفه">
+                <small class="muted">
+                    مطلوب فقط إذا كان المستودع خاصاً (Private). أنشئ رمزاً من نوع
+                    Fine-grained بصلاحية قراءة Contents فقط على هذا المستودع تحديداً.
+                </small>
             </div>
             <button type="submit" class="btn btn-primary">حفظ الإعدادات</button>
         </form>

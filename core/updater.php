@@ -18,9 +18,19 @@ function updater_branch(): string
     return preg_match('#^[\w./-]+$#', $b) ? $b : 'main';
 }
 
-/** جلب محتوى رابط عبر cURL أو file_get_contents */
-function updater_http_get(string $url, int $timeout = 60): string
+/**
+ * رمز الوصول GitHub Token (للمستودعات الخاصة)
+ * فارغ = مستودع عام بدون مصادقة
+ */
+function updater_token(): string
 {
+    return trim((string)setting('update_token', ''));
+}
+
+/** جلب محتوى رابط عبر cURL أو file_get_contents مع ترويسات اختيارية */
+function updater_http_get(string $url, int $timeout = 60, array $headers = []): string
+{
+    $headers[] = 'User-Agent: SBA-Quality-Updater';
     if (function_exists('curl_init')) {
         $ch = curl_init($url);
         curl_setopt_array($ch, [
@@ -29,15 +39,21 @@ function updater_http_get(string $url, int $timeout = 60): string
             CURLOPT_MAXREDIRS      => 5,
             CURLOPT_TIMEOUT        => $timeout,
             CURLOPT_CONNECTTIMEOUT => 15,
-            CURLOPT_USERAGENT      => 'SBA-Quality-Updater',
+            CURLOPT_HTTPHEADER     => $headers,
             CURLOPT_SSL_VERIFYPEER => true,
         ]);
         $body = curl_exec($ch);
         $err  = curl_error($ch);
         $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
+        if (PHP_VERSION_ID < 80000) curl_close($ch); // مهجورة منذ PHP 8.0
         if ($body === false) {
             throw new RuntimeException('فشل الاتصال: ' . $err);
+        }
+        if ($code === 401 || $code === 403) {
+            throw new RuntimeException('رفض المصادقة (' . $code . ') — تحقق من صلاحية رمز الوصول GitHub Token');
+        }
+        if ($code === 404) {
+            throw new RuntimeException('المستودع أو الملف غير موجود (404) — إن كان المستودع خاصاً فأدخل رمز الوصول في الإعدادات');
         }
         if ($code >= 400) {
             throw new RuntimeException("الخادم البعيد أعاد رمز الخطأ $code");
@@ -46,7 +62,11 @@ function updater_http_get(string $url, int $timeout = 60): string
     }
     // بديل: file_get_contents (يتطلب allow_url_fopen)
     $ctx = stream_context_create([
-        'http' => ['timeout' => $timeout, 'user_agent' => 'SBA-Quality-Updater', 'follow_location' => 1],
+        'http' => [
+            'timeout'         => $timeout,
+            'follow_location' => 1,
+            'header'          => implode("\r\n", $headers),
+        ],
     ]);
     $body = @file_get_contents($url, false, $ctx);
     if ($body === false) {
@@ -55,11 +75,28 @@ function updater_http_get(string $url, int $timeout = 60): string
     return $body;
 }
 
-/** أحدث إصدار متاح في المستودع (من ملف VERSION) */
+/** ترويسات المصادقة عند وجود رمز وصول */
+function updater_auth_headers(): array
+{
+    $token = updater_token();
+    return $token !== '' ? ['Authorization: Bearer ' . $token] : [];
+}
+
+/**
+ * أحدث إصدار متاح في المستودع (من ملف VERSION)
+ * مع رمز وصول: عبر GitHub API (يدعم المستودعات الخاصة)
+ * بدون رمز: عبر الرابط العام raw
+ */
 function updater_remote_version(): string
 {
-    $url = 'https://raw.githubusercontent.com/' . updater_repo() . '/' . updater_branch() . '/VERSION';
-    $v = trim(updater_http_get($url, 20));
+    if (updater_token() !== '') {
+        $url = 'https://api.github.com/repos/' . updater_repo() . '/contents/VERSION?ref=' . rawurlencode(updater_branch());
+        $headers = array_merge(updater_auth_headers(), ['Accept: application/vnd.github.raw+json']);
+        $v = trim(updater_http_get($url, 20, $headers));
+    } else {
+        $url = 'https://raw.githubusercontent.com/' . updater_repo() . '/' . updater_branch() . '/VERSION';
+        $v = trim(updater_http_get($url, 20));
+    }
     if (!preg_match('/^\d+\.\d+\.\d+$/', $v)) {
         throw new RuntimeException('تعذر قراءة رقم الإصدار من المستودع (ملف VERSION)');
     }
@@ -99,10 +136,14 @@ function updater_run(): array
     file_put_contents($backupFile, backup_generate_sql());
     $log[] = 'نسخة احتياطية تلقائية: backups/' . basename($backupFile);
 
-    // 2) تنزيل ZIP
-    $zipUrl = 'https://codeload.github.com/' . updater_repo() . '/zip/refs/heads/' . updater_branch();
+    // 2) تنزيل ZIP (عبر API مع رمز الوصول للمستودعات الخاصة، أو الرابط العام)
+    if (updater_token() !== '') {
+        $zipUrl = 'https://api.github.com/repos/' . updater_repo() . '/zipball/' . rawurlencode(updater_branch());
+    } else {
+        $zipUrl = 'https://codeload.github.com/' . updater_repo() . '/zip/refs/heads/' . updater_branch();
+    }
     $tmpZip = $backupDir . '/update_tmp.zip';
-    file_put_contents($tmpZip, updater_http_get($zipUrl, 120));
+    file_put_contents($tmpZip, updater_http_get($zipUrl, 120, updater_auth_headers()));
     $log[] = 'تم تنزيل حزمة التحديث (' . number_format(filesize($tmpZip) / 1024, 0) . ' KB)';
 
     // 3) فك الضغط في مجلد مؤقت

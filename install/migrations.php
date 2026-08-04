@@ -22,7 +22,11 @@ function sba_migrations(): array
             "INSERT IGNORE INTO `{prefix}settings` (skey, svalue) VALUES ('update_repo', 'badrshfaqah/sba-q')",
             "INSERT IGNORE INTO `{prefix}settings` (skey, svalue) VALUES ('update_branch', 'main')",
         ],
-        // '1.2.0' => [
+        '1.2.0' => [
+            // رمز الوصول لدعم التحديث من مستودع خاص
+            "INSERT IGNORE INTO `{prefix}settings` (skey, svalue) VALUES ('update_token', '')",
+        ],
+        // '1.3.0' => [
         //     "ALTER TABLE `{prefix}stations` ADD COLUMN city VARCHAR(100) NULL",
         // ],
     ];

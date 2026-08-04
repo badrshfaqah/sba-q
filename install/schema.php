@@ -182,6 +182,7 @@ function sba_seed(PDO $pdo, string $prefix): void
         'per_page'         => '20',
         'update_repo'      => 'badrshfaqah/sba-q',
         'update_branch'    => 'main',
+        'update_token'     => '',
         'db_version'       => trim((string)@file_get_contents(dirname(__DIR__) . '/VERSION')) ?: '1.0.0',
     ];
     $st = $pdo->prepare("INSERT INTO `{$prefix}settings` (skey, svalue) VALUES (?,?)
