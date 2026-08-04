@@ -63,6 +63,15 @@ layout_header('التقارير');
                     <option value="monthly" <?= $group === 'monthly' ? 'selected' : '' ?>>شهري</option>
                 </select>
             </div>
+            <div class="form-group">
+                <label>مقارنة من (اختياري)</label>
+                <input type="date" name="from2" value="<?= e(input('from2')) ?>">
+            </div>
+            <div class="form-group">
+                <label>مقارنة إلى</label>
+                <input type="date" name="to2" value="<?= e(input('to2')) ?>">
+                <small class="muted">اتركهما فارغين للمقارنة التلقائية بالفترة السابقة المكافئة</small>
+            </div>
             <?php endif; ?>
             <div class="form-group form-group-btn">
                 <button type="submit" class="btn btn-primary">عرض التقرير</button>
@@ -121,8 +130,18 @@ if ($type === 'program'):
     <?php endif; ?>
 </div>
 
-<?php /* ================= تقرير الالتزام ================= */
+<?php /* ================= تقرير الالتزام (فترات + مقارنة + تلميحات ذكية) ================= */
 elseif ($type === 'compliance'):
+    /* فترة المقارنة: مخصصة أو تلقائية (الفترة السابقة المكافئة) */
+    $from2 = input('from2');
+    $to2   = input('to2');
+    $autoCompare = !preg_match('/^\d{4}-\d{2}-\d{2}$/', $from2) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $to2);
+    $periodDays = max(1, (int)((strtotime($to) - strtotime($from)) / 86400) + 1);
+    if ($autoCompare) {
+        $to2   = date('Y-m-d', strtotime($from . ' -1 day'));
+        $from2 = date('Y-m-d', strtotime($to2 . ' -' . ($periodDays - 1) . ' days'));
+    }
+
     switch ($group) {
         case 'weekly':  $expr = 'DATE_FORMAT(check_at, "%x-أسبوع %v")'; break;
         case 'monthly': $expr = 'DATE_FORMAT(check_at, "%Y-%m")'; break;
@@ -134,17 +153,204 @@ elseif ($type === 'compliance'):
         GROUP BY period ORDER BY MIN(check_at)');
     $st->execute([$from . ' 00:00:00', $to . ' 23:59:59']);
     $periods = $st->fetchAll();
-    $byStation = compliance_by_station($from, $to);
-    $overall = compliance_rate($from, $to);
+
+    $byStation  = compliance_by_station($from, $to);
+    $byStation2 = [];
+    foreach (compliance_by_station($from2, $to2) as $r) $byStation2[$r['id']] = $r;
+    $overall  = compliance_rate($from, $to);
+    $overall2 = compliance_rate($from2, $to2);
+
+    /* التفكيك حسب النقطة الزمنية (الفترتان) */
+    $slotQ = 'SELECT DATE_FORMAT(check_at, "%H:%i") AS slot, COUNT(*) AS total, SUM(status) AS ok
+              FROM ' . tbl('compliance') . ' WHERE check_at >= ? AND check_at <= ? GROUP BY slot ORDER BY slot';
+    $st = db()->prepare($slotQ); $st->execute([$from . ' 00:00:00', $to . ' 23:59:59']);
+    $slots = $st->fetchAll();
+    $st = db()->prepare($slotQ); $st->execute([$from2 . ' 00:00:00', $to2 . ' 23:59:59']);
+    $slots2 = [];
+    foreach ($st->fetchAll() as $r) $slots2[$r['slot']] = 100.0 * (int)$r['ok'] / max(1, (int)$r['total']);
+
+    /* حسب يوم الأسبوع */
+    $st = db()->prepare('SELECT DAYOFWEEK(check_at) AS dw, COUNT(*) AS total, SUM(status) AS ok
+        FROM ' . tbl('compliance') . ' WHERE check_at >= ? AND check_at <= ? GROUP BY dw');
+    $st->execute([$from . ' 00:00:00', $to . ' 23:59:59']);
+    $dowNames = [1 => 'الأحد', 2 => 'الاثنين', 3 => 'الثلاثاء', 4 => 'الأربعاء', 5 => 'الخميس', 6 => 'الجمعة', 7 => 'السبت'];
+    $weekdays = [];
+    foreach ($st->fetchAll() as $r) {
+        $weekdays[] = ['name' => $dowNames[(int)$r['dw']], 'rate' => 100.0 * (int)$r['ok'] / max(1, (int)$r['total']), 'n' => (int)$r['total']];
+    }
+    usort($weekdays, fn($x, $y) => $x['rate'] <=> $y['rate']);
+
+    /* السلسلة اليومية للفترتين (للرسم المقارن) */
+    $dailySeries = function (string $f, string $t) {
+        $st = db()->prepare('SELECT DATE(check_at) AS d, COUNT(*) AS total, SUM(status) AS ok
+            FROM ' . tbl('compliance') . ' WHERE check_at >= ? AND check_at <= ? GROUP BY d');
+        $st->execute([$f . ' 00:00:00', $t . ' 23:59:59']);
+        $map = [];
+        foreach ($st->fetchAll() as $r) $map[$r['d']] = round(100.0 * (int)$r['ok'] / max(1, (int)$r['total']), 1);
+        $out = [];
+        for ($d = strtotime($f); $d <= strtotime($t); $d += 86400) {
+            $key = date('Y-m-d', $d);
+            $out[] = ['date' => $key, 'rate' => $map[$key] ?? null];
+        }
+        return $out;
+    };
+    $seriesA = $dailySeries($from, $to);
+    $seriesB = $dailySeries($from2, $to2);
+    $chartLen = max(count($seriesA), count($seriesB));
+
+    /* ---------- تلميحات ذكية خاصة بالالتزام ---------- */
+    $hints = [];
+    // أنماط الخلل المتكررة: إذاعة × نقطة زمنية بنسبة فشل عالية
+    $st = db()->prepare('SELECT s.name, DATE_FORMAT(c.check_at, "%H:%i") AS slot,
+            COUNT(*) AS n, SUM(c.status) AS ok
+        FROM ' . tbl('compliance') . ' c JOIN ' . tbl('stations') . ' s ON s.id = c.station_id
+        WHERE c.check_at >= ? AND c.check_at <= ?
+        GROUP BY c.station_id, slot HAVING n >= 3 AND (SUM(c.status) / COUNT(*)) < 0.5
+        ORDER BY (SUM(c.status) / COUNT(*)) ASC LIMIT 5');
+    $st->execute([$from . ' 00:00:00', $to . ' 23:59:59']);
+    foreach ($st->fetchAll() as $r) {
+        $rate = 100.0 * (int)$r['ok'] / (int)$r['n'];
+        $hints[] = ['danger', 'نمط خلل متكرر: ' . $r['name'] . ' عند ' . $r['slot'] .
+            ' ملتزمة ' . fmt_num($rate) . '% فقط من ' . (int)$r['n'] . ' فحوصات — الخلل منهجي وليس عارضاً'];
+    }
+    // سلاسل الفشل المتواصلة الحالية
+    $st = db()->prepare('SELECT c.station_id, s.name, c.status
+        FROM ' . tbl('compliance') . ' c JOIN ' . tbl('stations') . ' s ON s.id = c.station_id
+        WHERE c.check_at >= ? AND c.check_at <= ? ORDER BY c.station_id, c.check_at DESC');
+    $st->execute([$from . ' 00:00:00', $to . ' 23:59:59']);
+    $streaks = [];
+    foreach ($st->fetchAll() as $r) {
+        $sid = (int)$r['station_id'];
+        if (!isset($streaks[$sid])) $streaks[$sid] = ['name' => $r['name'], 'streak' => 0, 'stopped' => false];
+        if ($streaks[$sid]['stopped']) continue;
+        if ((int)$r['status'] === 0) $streaks[$sid]['streak']++;
+        else $streaks[$sid]['stopped'] = true;
+    }
+    foreach ($streaks as $s) {
+        if ($s['streak'] >= 3) {
+            $hints[] = ['danger', $s['name'] . ': آخر ' . $s['streak'] . ' فحوصات متتالية كلها غير ملتزمة — تحتاج تدخلاً فورياً'];
+        }
+    }
+    // تغيّر الإذاعات بين الفترتين
+    foreach ($byStation as $r) {
+        $prev = $byStation2[$r['id']]['rate'] ?? null;
+        if ($r['rate'] !== null && $prev !== null) {
+            $d = $r['rate'] - $prev;
+            if ($d <= -10) $hints[] = ['warning', $r['name'] . ' تراجعت ' . fmt_num(abs($d)) . ' نقطة عن فترة المقارنة (' . fmt_num($prev) . '% ← ' . fmt_num($r['rate']) . '%)'];
+            elseif ($d >= 10) $hints[] = ['success', $r['name'] . ' تحسنت ' . fmt_num($d) . ' نقطة عن فترة المقارنة (' . fmt_num($prev) . '% ← ' . fmt_num($r['rate']) . '%)'];
+        }
+    }
+    // أفضل وأسوأ يوم أسبوع
+    if (count($weekdays) >= 2) {
+        $worstD = $weekdays[0]; $bestD = $weekdays[count($weekdays) - 1];
+        if ($worstD['rate'] < 75) {
+            $hints[] = ['warning', 'يوم ' . $worstD['name'] . ' هو الأضعف أسبوعياً (' . fmt_num($worstD['rate']) . '%) — راجع جدولة الورديات فيه'];
+        }
+        if ($bestD['rate'] - $worstD['rate'] >= 15) {
+            $hints[] = ['info', 'فجوة ' . fmt_num($bestD['rate'] - $worstD['rate']) . ' نقطة بين أفضل الأيام (' . $bestD['name'] . ') وأضعفها (' . $worstD['name'] . ')'];
+        }
+    }
+    if ($overall !== null && $overall2 !== null && !$hints) {
+        $hints[] = ['success', 'لا أنماط خلل متكررة في هذه الفترة — الأداء مستقر'];
+    }
+    $sevOrder = ['danger' => 0, 'warning' => 1, 'info' => 2, 'success' => 3];
+    usort($hints, fn($x, $y) => $sevOrder[$x[0]] <=> $sevOrder[$y[0]]);
+    $delta = ($overall !== null && $overall2 !== null) ? $overall - $overall2 : null;
 ?>
 <div class="kpi-grid">
     <div class="kpi-card">
-        <div class="kpi-label">معدل الالتزام العام للفترة</div>
+        <div class="kpi-label">معدل الفترة الحالية</div>
         <div class="kpi-value <?= $overall !== null && $overall < 80 ? 'kpi-bad' : 'kpi-good' ?>">
             <?= $overall === null ? '—' : fmt_num($overall) . '%' ?>
         </div>
     </div>
+    <div class="kpi-card">
+        <div class="kpi-label">فترة المقارنة (<?= e($from2) ?> — <?= e($to2) ?>)</div>
+        <div class="kpi-value"><?= $overall2 === null ? '—' : fmt_num($overall2) . '%' ?></div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">التغيّر</div>
+        <div class="kpi-value">
+            <?php if ($delta === null): ?>—
+            <?php elseif ($delta >= 1): ?><span class="trend up">&#9650; +<?= fmt_num($delta) ?></span>
+            <?php elseif ($delta <= -1): ?><span class="trend down">&#9660; −<?= fmt_num(abs($delta)) ?></span>
+            <?php else: ?><span class="trend flat">مستقر</span><?php endif; ?>
+        </div>
+    </div>
 </div>
+
+<div class="card insights-card">
+    <div class="card-header"><h2>&#129302; تلميحات ذكية عن الالتزام</h2></div>
+    <?php if (!$hints): ?>
+        <div class="empty-state small"><p>لا توجد بيانات كافية للتحليل</p></div>
+    <?php else: foreach ($hints as [$sev, $text]): ?>
+        <div class="insight insight-<?= $sev ?>">
+            <span class="insight-icon"><?= ['danger' => '&#128680;', 'warning' => '&#9888;&#65039;', 'info' => '&#128161;', 'success' => '&#127942;'][$sev] ?></span>
+            <span><?= e($text) ?></span>
+        </div>
+    <?php endforeach; endif; ?>
+</div>
+
+<div class="card">
+    <div class="card-header"><h2>الاتجاه اليومي: الفترة الحالية مقابل فترة المقارنة</h2></div>
+    <div class="chart-box"><canvas id="chartCompare"></canvas></div>
+    <div class="legend" style="margin-top:8px">
+        <span class="legend-item"><i class="cell-dot" style="background:#2a78d6"></i> الحالية (<?= e($from) ?> — <?= e($to) ?>)</span>
+        <span class="legend-item"><i class="cell-dot" style="background:#eb6834"></i> المقارنة (<?= e($from2) ?> — <?= e($to2) ?>)</span>
+    </div>
+</div>
+
+<div class="grid-2">
+    <div class="card">
+        <div class="card-header"><h2>مقارنة الإذاعات بين الفترتين</h2></div>
+        <div class="table-wrap"><table class="table">
+            <thead><tr><th>الإذاعة</th><th>الحالية</th><th>المقارنة</th><th>التغيّر</th></tr></thead>
+            <tbody>
+            <?php foreach ($byStation as $s):
+                $prev = $byStation2[$s['id']]['rate'] ?? null;
+                $d = ($s['rate'] !== null && $prev !== null) ? $s['rate'] - $prev : null; ?>
+            <tr>
+                <td><strong><?= e($s['name']) ?></strong></td>
+                <td><?= $s['rate'] === null ? '—' : '<span class="badge ' . ($s['rate'] >= 80 ? 'badge-success' : 'badge-danger') . '">' . fmt_num($s['rate']) . '%</span>' ?></td>
+                <td><?= $prev === null ? '—' : fmt_num($prev) . '%' ?></td>
+                <td>
+                    <?php if ($d === null): ?>—
+                    <?php elseif ($d >= 1): ?><span class="trend up">&#9650; <?= fmt_num($d) ?></span>
+                    <?php elseif ($d <= -1): ?><span class="trend down">&#9660; <?= fmt_num(abs($d)) ?></span>
+                    <?php else: ?><span class="trend flat">&#8212;</span><?php endif; ?>
+                </td>
+            </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table></div>
+    </div>
+    <div class="card">
+        <div class="card-header"><h2>الالتزام حسب النقطة الزمنية</h2></div>
+        <div class="table-wrap"><table class="table">
+            <thead><tr><th>الوقت</th><th>الفحوصات</th><th>الحالية</th><th>المقارنة</th><th>التغيّر</th></tr></thead>
+            <tbody>
+            <?php foreach ($slots as $sl):
+                $rate = 100.0 * (int)$sl['ok'] / max(1, (int)$sl['total']);
+                $prev = $slots2[$sl['slot']] ?? null;
+                $d = $prev !== null ? $rate - $prev : null; ?>
+            <tr>
+                <td class="time-col"><strong><?= e($sl['slot']) ?></strong></td>
+                <td><?= (int)$sl['total'] ?></td>
+                <td><span class="badge <?= $rate >= 80 ? 'badge-success' : 'badge-danger' ?>"><?= fmt_num($rate) ?>%</span></td>
+                <td><?= $prev === null ? '—' : fmt_num($prev) . '%' ?></td>
+                <td>
+                    <?php if ($d === null): ?>—
+                    <?php elseif ($d >= 1): ?><span class="trend up">&#9650; <?= fmt_num($d) ?></span>
+                    <?php elseif ($d <= -1): ?><span class="trend down">&#9660; <?= fmt_num(abs($d)) ?></span>
+                    <?php else: ?><span class="trend flat">&#8212;</span><?php endif; ?>
+                </td>
+            </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table></div>
+    </div>
+</div>
+
 <div class="grid-2">
     <div class="card">
         <div class="card-header"><h2>الالتزام حسب الفترة (<?= $group === 'daily' ? 'يومي' : ($group === 'weekly' ? 'أسبوعي' : 'شهري') ?>)</h2></div>
@@ -166,26 +372,73 @@ elseif ($type === 'compliance'):
         <?php endif; ?>
     </div>
     <div class="card">
-        <div class="card-header"><h2>الالتزام حسب الإذاعة</h2></div>
+        <div class="card-header"><h2>الالتزام حسب يوم الأسبوع</h2></div>
+        <?php if (!$weekdays): ?><div class="empty-state small"><p>لا توجد بيانات</p></div>
+        <?php else: ?>
         <table class="table">
-            <thead><tr><th>الإذاعة</th><th>الفحوصات</th><th>المعدل</th></tr></thead>
+            <thead><tr><th>اليوم</th><th>الفحوصات</th><th>المعدل</th></tr></thead>
             <tbody>
-            <?php foreach ($byStation as $s): ?>
+            <?php foreach (array_reverse($weekdays) as $wd): ?>
             <tr>
-                <td><?= e($s['name']) ?></td>
-                <td><?= (int)$s['total'] ?></td>
-                <td>
-                    <?php if ($s['rate'] === null): ?>—
-                    <?php else: ?>
-                    <span class="badge <?= $s['rate'] >= 80 ? 'badge-success' : 'badge-danger' ?>"><?= fmt_num($s['rate']) ?>%</span>
-                    <?php endif; ?>
-                </td>
+                <td><strong><?= e($wd['name']) ?></strong></td>
+                <td><?= (int)$wd['n'] ?></td>
+                <td><span class="badge <?= $wd['rate'] >= 80 ? 'badge-success' : 'badge-danger' ?>"><?= fmt_num($wd['rate']) ?>%</span></td>
             </tr>
             <?php endforeach; ?>
             </tbody>
         </table>
+        <?php endif; ?>
     </div>
 </div>
+
+<script src="assets/js/chart.umd.min.js"></script>
+<script>
+window.addEventListener('DOMContentLoaded', function () {
+    var el = document.getElementById('chartCompare');
+    if (!el || !window.Chart) return;
+    var len = <?= (int)$chartLen ?>;
+    var labels = Array.from({length: len}, function (_, i) { return 'يوم ' + (i + 1); });
+    var a = <?= json_encode(array_map(fn($x) => $x['rate'], $seriesA)) ?>;
+    var b = <?= json_encode(array_map(fn($x) => $x['rate'], $seriesB)) ?>;
+    var datesA = <?= json_encode(array_map(fn($x) => $x['date'], $seriesA)) ?>;
+    var datesB = <?= json_encode(array_map(fn($x) => $x['date'], $seriesB)) ?>;
+    new Chart(el, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [
+                { label: 'الحالية', data: a, borderColor: '#2a78d6', backgroundColor: '#2a78d6',
+                  borderWidth: 2, pointRadius: 3, spanGaps: true, tension: 0.25 },
+                { label: 'المقارنة', data: b, borderColor: '#eb6834', backgroundColor: '#eb6834',
+                  borderWidth: 2, pointRadius: 3, borderDash: [6, 4], spanGaps: true, tension: 0.25 }
+            ]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    rtl: true,
+                    callbacks: {
+                        title: function (items) {
+                            var i = items[0].dataIndex;
+                            return items[0].datasetIndex === 0 ? (datesA[i] || '') : (datesB[i] || '');
+                        },
+                        label: function (ctx) {
+                            return (ctx.datasetIndex === 0 ? 'الحالية: ' : 'المقارنة: ') +
+                                   (ctx.parsed.y === null ? 'لا بيانات' : ctx.parsed.y + '%');
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: { grid: { display: false }, ticks: { color: '#898781', maxTicksLimit: 12 } },
+                y: { min: 0, max: 100, grid: { color: '#e1e0d9' }, border: { display: false }, ticks: { color: '#898781' } }
+            }
+        }
+    });
+});
+</script>
 
 <?php /* ================= مقارنة الإذاعات ================= */
 elseif ($type === 'stations'):

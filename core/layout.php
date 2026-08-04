@@ -70,6 +70,24 @@ function layout_header(string $title = ''): void
         <header class="topbar">
             <button class="menu-toggle" id="menuToggle" aria-label="القائمة">&#9776;</button>
             <h1 class="page-title"><?= e($title) ?></h1>
+            <?php $notifs = user_notifications(); ?>
+            <div class="notif-wrap">
+                <button class="notif-bell" id="notifBell" aria-label="التنبيهات">
+                    &#128276;
+                    <?php if ($notifs): ?><span class="notif-count"><?= count($notifs) ?></span><?php endif; ?>
+                </button>
+                <div class="notif-panel" id="notifPanel">
+                    <div class="notif-title">التنبيهات</div>
+                    <?php if (!$notifs): ?>
+                        <div class="notif-empty">&#10004;&#65039; لا توجد تنبيهات — كل شيء تحت السيطرة</div>
+                    <?php else: foreach ($notifs as [$sev, $text, $link]): ?>
+                        <a class="notif-item notif-<?= e($sev) ?>" href="<?= e($link) ?>">
+                            <span class="notif-dot"></span>
+                            <span><?= e($text) ?></span>
+                        </a>
+                    <?php endforeach; endif; ?>
+                </div>
+            </div>
             <div class="topbar-clock" id="topbarClock"><?= date('Y-m-d H:i') ?></div>
         </header>
         <?php if (is_impersonating()): $imp = impersonator(); ?>

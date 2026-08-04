@@ -663,6 +663,74 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 18px 0; }
   .quadrant-grid { grid-template-columns: 1fr; }
 }
 
+/* ---------- التنبيهات ---------- */
+.notif-wrap { position: relative; }
+.notif-bell {
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-size: 1.05rem;
+  padding: 5px 11px;
+  cursor: pointer;
+  position: relative;
+  line-height: 1.4;
+}
+.notif-bell:hover { background: var(--page); }
+.notif-count {
+  position: absolute;
+  top: -7px;
+  left: -7px;
+  background: var(--bad);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+}
+.notif-panel {
+  display: none;
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  width: 340px;
+  max-width: calc(100vw - 24px);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 8px 30px rgba(11, 11, 11, 0.14);
+  z-index: 100;
+  overflow: hidden;
+}
+.notif-panel.open { display: block; }
+.notif-title {
+  padding: 10px 16px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  border-bottom: 1px solid var(--line);
+}
+.notif-empty { padding: 22px 16px; text-align: center; color: var(--muted); font-size: 0.88rem; }
+.notif-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink);
+  font-size: 0.87rem;
+  line-height: 1.5;
+}
+.notif-item:last-child { border-bottom: 0; }
+.notif-item:hover { background: var(--page); text-decoration: none; }
+.notif-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; margin-top: 6px; }
+.notif-danger .notif-dot  { background: var(--bad); }
+.notif-warning .notif-dot { background: #fab219; }
+.notif-info .notif-dot    { background: var(--primary); }
+
 /* ---------- الرؤى التلقائية ---------- */
 .insight {
   display: flex;
@@ -758,6 +826,19 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 18px 0; }
   z-index: 45;
 }
 
+/* عمود الوقت ثابت أثناء التمرير الأفقي (شاشة الالتزام والخرائط الحرارية) */
+.compliance-grid .time-col,
+.heatmap .time-col,
+.compliance-grid th:first-child,
+.heatmap th:first-child,
+.heatmap td:first-child {
+  position: sticky;
+  inset-inline-start: 0;
+  background: var(--surface);
+  z-index: 2;
+}
+.compliance-grid thead th, .heatmap thead th { background: var(--surface); }
+
 /* تقييم مريح من الجوال: أهداف لمس كبيرة وزر حفظ ثابت */
 @media (max-width: 640px) {
   .score-option span { width: 44px; height: 44px; font-size: 1rem; }
@@ -773,6 +854,23 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 18px 0; }
   .eval-form .form-actions .btn { flex: 1; padding: 12px; }
   .media-box audio { max-width: 100%; }
   .status-option span { padding: 9px 16px; }
+
+  /* جداول أرشق على الشاشات الصغيرة */
+  .table { font-size: 0.82rem; }
+  .table th, .table td { padding: 7px 6px; }
+  .compliance-grid td.comp-cell { min-width: 46px; }
+  .heatmap td.heat-cell { min-width: 40px; font-size: 0.72rem; }
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .kpi-card { padding: 10px 12px; }
+  .card { padding: 14px; }
+  .btn { padding: 9px 14px; }
+  .status-toggle { width: 100%; }
+  .status-toggle .status-option { flex: 1; }
+  .status-toggle .status-option span { width: 100%; text-align: center; display: block; }
+  .quadrant-grid { gap: 8px; }
+  .report-filter .form-row { grid-template-columns: 1fr 1fr !important; }
+  .inline-add { flex-direction: column; }
+  .inline-add select, .inline-add input[type="text"] { width: 100%; }
 }
 
 @media (max-width: 900px) {

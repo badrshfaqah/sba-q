@@ -28,6 +28,19 @@
         }, 30000);
     }
 
+    /* التنبيهات */
+    var bell = document.getElementById('notifBell');
+    var panel = document.getElementById('notifPanel');
+    if (bell && panel) {
+        bell.addEventListener('click', function (e) {
+            e.stopPropagation();
+            panel.classList.toggle('open');
+        });
+        document.addEventListener('click', function (e) {
+            if (!panel.contains(e.target)) panel.classList.remove('open');
+        });
+    }
+
     /* التبويبات */
     document.querySelectorAll('[data-tabs]').forEach(function (tabs) {
         var container = tabs.closest('.card') || document;

@@ -38,6 +38,7 @@ require_once SBA_ROOT . '/core/helpers.php';
 require_once SBA_ROOT . '/core/auth.php';
 require_once SBA_ROOT . '/core/audit.php';
 require_once SBA_ROOT . '/core/stats.php';
+require_once SBA_ROOT . '/core/notifications.php';
 
 /**
  * اتصال قاعدة البيانات (PDO Singleton)
