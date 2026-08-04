@@ -1,0 +1,9 @@
+# ملفات تُنشأ عند التثبيت — لا تُرفع للمستودع
+config.php
+install/installed.lock
+
+# حزم البناء
+*.zip
+
+# نظام التشغيل
+.DS_Store
