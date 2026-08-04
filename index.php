@@ -35,6 +35,7 @@ $modules = [
     'audit'      => 'audit.view',
     'backup'     => 'backup.manage',
     'update'     => 'update.manage',
+    'app'        => 'dashboard.view',
 ];
 
 $m = $_GET['m'] ?? 'dashboard';

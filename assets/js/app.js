@@ -2,6 +2,11 @@
 (function () {
     'use strict';
 
+    /* تسجيل عامل الخدمة (يجعل المنصة قابلة للتثبيت كتطبيق) */
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw.js').catch(function () {});
+    }
+
     /* قائمة الجوال */
     var toggle = document.getElementById('menuToggle');
     var sidebar = document.getElementById('sidebar');

@@ -19,6 +19,7 @@ function layout_nav_items(): array
     if (can('audit.view'))       $items[] = ['audit',      'سجل العمليات',     '&#128220;'];
     if (can('backup.manage'))    $items[] = ['backup',     'النسخ الاحتياطي',  '&#128190;'];
     if (can('update.manage'))    $items[] = ['update',     'تحديث النظام',     '&#128260;'];
+    if (can('dashboard.view'))   $items[] = ['app',        'التطبيق والإشعارات', '&#128241;'];
     return $items;
 }
 
@@ -34,6 +35,12 @@ function layout_header(string $title = ''): void
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title><?= e($title) ?> | <?= e($site) ?></title>
 <link rel="icon" type="image/png" href="assets/img/SBA_logo.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#2a78d6">
+<link rel="apple-touch-icon" href="assets/img/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="جودة البث">
 <link rel="stylesheet" href="assets/css/style.css?v=<?= SBA_VERSION ?>">
 </head>
 <body>

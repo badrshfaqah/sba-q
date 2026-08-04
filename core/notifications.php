@@ -13,6 +13,14 @@ function user_notifications(): array
     $today = date('Y-m-d');
 
     try {
+        /* التنبيهات العامة (آخر 7 أيام) */
+        $st = db()->prepare('SELECT title FROM ' . tbl('announcements') . '
+            WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) ORDER BY id DESC LIMIT 3');
+        $st->execute();
+        foreach ($st->fetchAll() as $an) {
+            $list[] = ['info', '📢 ' . $an['title'], url('app')];
+        }
+
         /* للمقيّم: مهامه المتأخرة ومهام اليوم */
         if (can('eval.technical') || can('eval.content')) {
             $types = [];

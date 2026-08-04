@@ -77,7 +77,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canManage && $a === 'save') {
 
     /* مزامنة تعيين المقيمين (مع الإبقاء على من لديه تقييم منفذ) */
     if (can('evaluators.assign')) {
-        $sync = function (string $type, array $userIds) use ($pdo, $id) {
+        $newlyAssigned = [];
+        $sync = function (string $type, array $userIds) use ($pdo, $id, &$newlyAssigned) {
             $existing = $pdo->prepare('SELECT user_id FROM ' . tbl('episode_evaluators') . ' WHERE episode_id=? AND type=?');
             $existing->execute([$id, $type]);
             $current = array_map('intval', $existing->fetchAll(PDO::FETCH_COLUMN));
@@ -86,7 +87,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canManage && $a === 'save') {
             $toRemove = array_diff($current, $userIds);
 
             $ins = $pdo->prepare('INSERT IGNORE INTO ' . tbl('episode_evaluators') . ' (episode_id, user_id, type) VALUES (?,?,?)');
-            foreach ($toAdd as $uid) $ins->execute([$id, $uid, $type]);
+            foreach ($toAdd as $uid) {
+                $ins->execute([$id, $uid, $type]);
+                if ($ins->rowCount() > 0) $newlyAssigned[] = (int)$uid;
+            }
 
             if ($toRemove) {
                 // لا نحذف مقيّماً قدّم تقييمه فعلاً
@@ -99,6 +103,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canManage && $a === 'save') {
         };
         $sync('technical', $techEvals);
         $sync('content', $contentEvals);
+
+        /* إشعار فوري للمقيمين المعينين حديثاً */
+        if ($newlyAssigned) {
+            require_once SBA_ROOT . '/core/push.php';
+            try {
+                push_send_to_users(array_unique($newlyAssigned),
+                    'مهمة تقييم جديدة 📋',
+                    'أُسندت إليك مهمة تقييم للحلقة: ' . $title,
+                    'index.php');
+            } catch (Throwable $e) {
+                // فشل الإشعار لا يوقف الحفظ
+            }
+        }
     }
     redirect(url('episodes', ['a' => 'view', 'id' => $id]));
 }

@@ -1,0 +1,18 @@
+{
+  "name": "منصة متابعة جودة البث والمحتوى الإذاعي",
+  "short_name": "جودة البث",
+  "description": "منصة داخلية لإدارة جودة الإذاعات: تقييم البرامج ومتابعة التزام البث",
+  "start_url": "./index.php",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "dir": "rtl",
+  "lang": "ar",
+  "background_color": "#f9f9f7",
+  "theme_color": "#2a78d6",
+  "icons": [
+    { "src": "assets/img/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "assets/img/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "assets/img/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

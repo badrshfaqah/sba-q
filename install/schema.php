@@ -152,6 +152,35 @@ function sba_schema(string $prefix): array
             PRIMARY KEY (skey)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
 
+        "CREATE TABLE IF NOT EXISTS `{$p}push_subscriptions` (
+            id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+            user_id INT UNSIGNED NOT NULL,
+            endpoint_hash CHAR(64) NOT NULL,
+            endpoint TEXT NOT NULL,
+            p256dh VARCHAR(150) NOT NULL,
+            auth VARCHAR(60) NOT NULL,
+            active TINYINT(1) NOT NULL DEFAULT 1,
+            last_ok DATETIME NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY uq_endpoint (endpoint_hash),
+            KEY idx_push_user (user_id),
+            CONSTRAINT fk_push_user FOREIGN KEY (user_id)
+                REFERENCES `{$p}users`(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+
+        "CREATE TABLE IF NOT EXISTS `{$p}announcements` (
+            id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+            title VARCHAR(150) NOT NULL,
+            body VARCHAR(500) NOT NULL,
+            created_by INT UNSIGNED NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY idx_ann_time (created_at),
+            CONSTRAINT fk_ann_user FOREIGN KEY (created_by)
+                REFERENCES `{$p}users`(id) ON DELETE SET NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+
         "CREATE TABLE IF NOT EXISTS `{$p}audit_log` (
             id INT UNSIGNED NOT NULL AUTO_INCREMENT,
             user_id INT UNSIGNED NULL,

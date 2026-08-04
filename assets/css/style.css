@@ -777,6 +777,23 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 18px 0; }
 .form-details summary { padding: 10px 0; cursor: pointer; }
 .form-details[open] summary { border-bottom: 1px solid var(--line); margin-bottom: 8px; }
 
+/* ---------- التنبيهات العامة ---------- */
+.announcement {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 10px;
+}
+.announcement-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+.announcement p { font-size: 0.9rem; color: var(--ink-2); }
+
 /* ---------- شاشة التحديث ---------- */
 .update-log {
   background: var(--page);

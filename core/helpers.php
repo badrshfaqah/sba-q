@@ -52,15 +52,17 @@ function csrf_field(): string
 function csrf_check(): void
 {
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-        if (!hash_equals(csrf_token(), $_POST['csrf'] ?? '')) {
+        // النماذج العادية عبر حقل csrf، وطلبات JSON عبر ترويسة X-CSRF
+        $token = $_POST['csrf'] ?? $_SERVER['HTTP_X_CSRF'] ?? '';
+        if (!hash_equals(csrf_token(), $token)) {
             http_response_code(403);
             die('طلب غير صالح (CSRF). أعد المحاولة.');
         }
     }
 }
 
-/** قراءة إعداد من قاعدة البيانات */
-function setting(string $key, $default = null)
+/** كاش الإعدادات (مع إمكانية تحديث مفتاح بعد الحفظ) */
+function settings_cache(?string $setKey = null, ?string $setValue = null): array
 {
     static $cache = null;
     if ($cache === null) {
@@ -73,6 +75,16 @@ function setting(string $key, $default = null)
             // الجداول غير جاهزة بعد
         }
     }
+    if ($setKey !== null) {
+        $cache[$setKey] = $setValue;
+    }
+    return $cache;
+}
+
+/** قراءة إعداد من قاعدة البيانات */
+function setting(string $key, $default = null)
+{
+    $cache = settings_cache();
     return $cache[$key] ?? $default;
 }
 
@@ -81,6 +93,7 @@ function setting_save(string $key, $value): void
     $st = db()->prepare('INSERT INTO ' . tbl('settings') . ' (skey, svalue) VALUES (?,?)
         ON DUPLICATE KEY UPDATE svalue = VALUES(svalue)');
     $st->execute([$key, (string)$value]);
+    settings_cache($key, (string)$value);
 }
 
 /** تنسيق التاريخ الميلادي والوقت 24 ساعة */

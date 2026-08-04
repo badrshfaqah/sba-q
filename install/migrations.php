@@ -40,6 +40,12 @@ function sba_migrations(): array
                 sba_seed_forms($pdo, $prefix);
             },
         ],
+        '1.7.0' => [
+            // جدولا الإشعارات (push_subscriptions و announcements) ينشئهما
+            // إعادة تنفيذ المخطط تلقائياً — نضمن هنا مفاتيح الإعدادات فقط
+            "INSERT IGNORE INTO `{prefix}settings` (skey, svalue) VALUES ('vapid_public', '')",
+            "INSERT IGNORE INTO `{prefix}settings` (skey, svalue) VALUES ('vapid_private', '')",
+        ],
     ];
 }
 
