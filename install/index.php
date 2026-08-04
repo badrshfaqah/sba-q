@@ -103,6 +103,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $step === 4) {
             $st = $pdo->prepare("INSERT INTO `{$p}stations` (name) VALUES (?)");
             $st->execute([$station]);
 
+            // تحميل البيانات التجريبية إن طُلبت
+            if (!empty($_POST['load_demo'])) {
+                require_once __DIR__ . '/demo.php';
+                try { sba_demo_load($pdo, $p); } catch (Throwable $e) { /* لا نوقف التثبيت */ }
+            }
+
             // كتابة ملف الإعدادات
             $config = "<?php\n"
                 . "// ملف إعدادات النظام - تم إنشاؤه تلقائياً بواسطة معالج التثبيت\n"
@@ -253,6 +259,12 @@ foreach ($checks as $c) { if (!$c[1]) $checksOk = false; }
             <div class="form-group">
                 <label>اسم أول جهة (إذاعة)</label>
                 <input type="text" name="station_name" value="<?= ie($_POST['station_name'] ?? '') ?>" required>
+            </div>
+            <div class="form-group">
+                <label style="display:flex;align-items:center;gap:8px;font-weight:500;cursor:pointer">
+                    <input type="checkbox" name="load_demo" value="1">
+                    تحميل بيانات تجريبية للتعرف على المنصة (يمكن إزالتها لاحقاً من الإعدادات)
+                </label>
             </div>
             <button type="submit" class="btn btn-primary btn-block">إنهاء التثبيت ←</button>
         </form>

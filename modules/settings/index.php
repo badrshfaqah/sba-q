@@ -3,6 +3,23 @@
 if (!defined('SBA')) exit;
 
 $a = $_GET['a'] ?? 'view';
+require_once SBA_ROOT . '/install/demo.php';
+
+/* تحميل / إزالة البيانات التجريبية */
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($a === 'demo_load' || $a === 'demo_remove')) {
+    try {
+        @set_time_limit(120);
+        $demoLog = $a === 'demo_load'
+            ? sba_demo_load(db(), DB_PREFIX)
+            : sba_demo_remove(db(), DB_PREFIX);
+        audit_log($a === 'demo_load' ? 'create' : 'delete', 'demo', 0,
+            ($a === 'demo_load' ? 'تحميل' : 'إزالة') . ' البيانات التجريبية');
+        flash_set('success', implode(' • ', $demoLog));
+    } catch (Throwable $e) {
+        flash_set('danger', $e->getMessage());
+    }
+    redirect(url('settings'));
+}
 
 /* حفظ الإعدادات العامة */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $a === 'save') {
@@ -150,6 +167,35 @@ layout_header('الإعدادات');
             </tbody>
         </table>
         <p class="muted">إيقاف المعيار يخفيه من التقييمات الجديدة فقط، ولا يؤثر على التقييمات السابقة.</p>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h2>&#129514; البيانات التجريبية</h2>
+        <?= sba_demo_loaded(db(), DB_PREFIX)
+            ? '<span class="badge badge-warning">محمّلة حالياً</span>'
+            : '<span class="badge badge-muted">غير محمّلة</span>' ?>
+    </div>
+    <p class="muted">
+        محتوى تجريبي كامل للتعرف على المنصة: 5 إذاعات بملامح أداء مختلفة، 12 برنامجاً، عشرات الحلقات
+        بتقييمات منفذة ومعلقة، وموظفون مصنّفون (كلمة مرورهم: <code dir="ltr"><?= e(SBA_DEMO_PASSWORD) ?></code>)،
+        وفحوصات التزام لأسبوعين. النظام يسجّل كل صف يزرعه، فالإزالة تحذف المحتوى التجريبي وحده
+        <strong>دون المساس بأي بيانات حقيقية</strong>.
+    </p>
+    <div class="form-actions">
+        <?php if (!sba_demo_loaded(db(), DB_PREFIX)): ?>
+        <form method="post" action="<?= e(url('settings', ['a' => 'demo_load'])) ?>" class="inline-form">
+            <?= csrf_field() ?>
+            <button type="submit" class="btn btn-primary">تحميل البيانات التجريبية</button>
+        </form>
+        <?php else: ?>
+        <form method="post" action="<?= e(url('settings', ['a' => 'demo_remove'])) ?>" class="inline-form"
+              onsubmit="return confirm('سيتم حذف كل المحتوى التجريبي (الإذاعات والبرامج والحلقات والموظفين التجريبيين وبياناتهم). بياناتك الحقيقية لن تُمس. متابعة؟')">
+            <?= csrf_field() ?>
+            <button type="submit" class="btn btn-danger">إزالة البيانات التجريبية</button>
+        </form>
+        <?php endif; ?>
     </div>
 </div>
 <?php
