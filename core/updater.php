@@ -260,10 +260,22 @@ function updater_run(): array
 
     // 4) نسخ الملفات فوق التركيب الحالي
     updater_log('4) نسخ الملفات (الإصدار الجديد: ' . $newVersion . ')...');
-    $copied = updater_copy_tree($srcRoot, $root, '');
+    $missing = [];
+    $copied = updater_copy_tree($srcRoot, $root, '', $missing);
     updater_rrmdir($tmpDir);
     $log[] = "تم تحديث $copied ملفاً من المستودع";
     updater_log('   ✓ ' . $copied . ' ملفاً');
+
+    // تقرير عن الملفات التي كانت ناقصة أو مبتورة (يكشف رفعاً غير مكتمل)
+    $broken = array_values(array_filter($missing, function ($m) {
+        return strpos($m, '(مفقود)') !== false || strpos($m, '(فارغ)') !== false;
+    }));
+    if ($broken) {
+        $log[] = 'استُعيد ' . count($broken) . ' ملفاً كان مفقوداً أو فارغاً: '
+               . implode('، ', array_slice($broken, 0, 6))
+               . (count($broken) > 6 ? ' وغيرها' : '');
+        updater_log('   ! ملفات كانت ناقصة: ' . implode(' | ', $broken));
+    }
 
     // 5) ترقية قاعدة البيانات
     updater_log('5) ترقية قاعدة البيانات...');
@@ -278,8 +290,11 @@ function updater_run(): array
     return $log;
 }
 
-/** نسخ شجرة ملفات مع تجاوز المسارات المحمية */
-function updater_copy_tree(string $src, string $dst, string $rel): int
+/**
+ * نسخ شجرة ملفات مع تجاوز المسارات المحمية
+ * $missing يُملأ بأسماء الملفات التي كانت مفقودة أو فارغة أو مختلفة الحجم
+ */
+function updater_copy_tree(string $src, string $dst, string $rel, array &$missing = []): int
 {
     $count = 0;
     $protected = updater_protected();
@@ -290,8 +305,16 @@ function updater_copy_tree(string $src, string $dst, string $rel): int
         $d = $dst . '/' . $item;
         if (is_dir($s)) {
             if (!is_dir($d)) @mkdir($d, 0755, true);
-            $count += updater_copy_tree($s, $d, $relPath);
+            $count += updater_copy_tree($s, $d, $relPath, $missing);
         } else {
+            // رصد الملفات الناقصة أو المبتورة قبل استبدالها
+            if (!is_file($d)) {
+                $missing[] = $relPath . ' (مفقود)';
+            } elseif (filesize($d) === 0 && filesize($s) > 0) {
+                $missing[] = $relPath . ' (فارغ)';
+            } elseif (filesize($d) !== filesize($s)) {
+                $missing[] = $relPath . ' (مختلف)';
+            }
             if (copy($s, $d)) $count++;
         }
     }

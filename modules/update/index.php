@@ -25,6 +25,7 @@ $a = $_GET['a'] ?? 'view';
 $checkResult = null;
 $checkError  = null;
 $updateLog   = null;
+$repaired    = false;
 
 /* ---------- حفظ إعدادات الاتصال بالمستودع ---------- */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $a === 'save_repo') {
@@ -65,6 +66,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $a === 'run' && $updaterReady) {
     } catch (Throwable $e) {
         $checkError = 'فشل التحديث: ' . safe_error($e);
         audit_log('update', 'system', 0, 'فشل تحديث النظام');
+    }
+}
+
+/* ---------- إعادة رفع كل الملفات (إصلاح رفع غير مكتمل) ---------- */
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $a === 'repair' && $updaterReady) {
+    try {
+        @set_time_limit(300);
+        @ini_set('memory_limit', '256M');
+        $updateLog = updater_run();
+        $repaired = true;
+        audit_log('update', 'system', 0, 'إعادة رفع جميع ملفات النظام من المستودع');
+    } catch (Throwable $e) {
+        $checkError = 'فشلت إعادة الرفع: ' . safe_error($e);
     }
 }
 
@@ -130,7 +144,11 @@ layout_header('تحديث النظام');
 
 <?php if ($updateLog): ?>
 <div class="card">
-    <div class="alert alert-success">تمت العملية بنجاح — أعد تحميل الصفحة لرؤية الإصدار الجديد.</div>
+    <div class="alert alert-success">
+        <?= $repaired
+            ? 'تمت إعادة رفع جميع الملفات بنجاح — أي ملف كان ناقصاً أو مبتوراً استُبدل بنسخته الصحيحة.'
+            : 'تمت العملية بنجاح — أعد تحميل الصفحة لرؤية الإصدار الجديد.' ?>
+    </div>
     <div class="update-log">
         <?php foreach ($updateLog as $line): ?>
         <div class="update-log-line">✓ <?= e($line) ?></div>
@@ -198,6 +216,21 @@ layout_header('تحديث النظام');
             </form>
             <?php endif; ?>
         </div>
+
+        <hr>
+        <h3 class="section-title">&#128295; إصلاح: إعادة رفع جميع الملفات</h3>
+        <p class="muted">يعيد جلب <strong>كل</strong> ملفات النظام من المستودع واستبدالها — حتى لو كان
+           الإصدار نفسه. استخدمه إذا ظهرت أخطاء غريبة أو تعطّلت صفحة، فغالباً السبب ملف لم يكتمل رفعه
+           عبر FTP. سيخبرك التقرير بأسماء الملفات التي كانت ناقصة فعلاً.</p>
+        <p class="muted">&#128274; آمن تماماً: <code>config.php</code> ومجلدا الرفع والنسخ الاحتياطي لا تُمس،
+           وتُؤخذ نسخة احتياطية من قاعدة البيانات قبل البدء.</p>
+        <form method="post" action="<?= e(url('update', ['a' => 'repair'])) ?>" class="inline-form"
+              data-confirm="سيتم تنزيل جميع ملفات النظام من المستودع واستبدال الحالية بها. بياناتك وإعداداتك لن تُمس. متابعة؟">
+            <?= csrf_field() ?>
+            <button type="submit" class="btn btn-danger-ghost" <?= $updaterReady ? '' : 'disabled' ?>>
+                &#8635; إعادة رفع جميع الملفات
+            </button>
+        </form>
 
         <hr>
         <h3 class="section-title">بعد الرفع اليدوي عبر FTP</h3>
