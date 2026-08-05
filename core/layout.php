@@ -107,7 +107,13 @@ function layout_header(string $title = ''): void
         <header class="topbar">
             <button class="menu-toggle" id="menuToggle" aria-label="القائمة">&#9776;</button>
             <h1 class="page-title"><?= e($title) ?></h1>
-            <?php $notifs = user_notifications(); ?>
+            <?php
+            // محصّن ضد نقص ملف core/notifications.php عند رفع غير مكتمل
+            $notifs = [];
+            if (function_exists('user_notifications')) {
+                try { $notifs = user_notifications(); } catch (Throwable $e) { $notifs = []; }
+            }
+            ?>
             <div class="notif-wrap">
                 <button class="notif-bell" id="notifBell" aria-label="التنبيهات">
                     &#128276;
@@ -127,7 +133,7 @@ function layout_header(string $title = ''): void
             </div>
             <div class="topbar-clock" id="topbarClock"><?= date('Y-m-d H:i') ?></div>
         </header>
-        <?php if (is_impersonating()): $imp = impersonator(); ?>
+        <?php if (function_exists('is_impersonating') && is_impersonating()): $imp = impersonator(); ?>
         <div class="impersonation-bar">
             <span>&#128373;&#65039; أنت الآن تتصفح بالنيابة عن <strong><?= e($user['name'] ?? '') ?></strong>
                 (حسابك الأصلي: <?= e($imp['name'] ?? '') ?>)</span>

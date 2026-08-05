@@ -54,12 +54,12 @@ if (!file_exists(SBA_ROOT . '/config.php')) {
 }
 
 require_once SBA_ROOT . '/config.php';
-require_once SBA_ROOT . '/core/errors.php';   // يمنع ظهور خطأ 500 للمستخدم
-require_once SBA_ROOT . '/core/helpers.php';
-require_once SBA_ROOT . '/core/auth.php';
-require_once SBA_ROOT . '/core/audit.php';
-require_once SBA_ROOT . '/core/stats.php';
-require_once SBA_ROOT . '/core/notifications.php';
+// تحميل ملفات النواة — الموجود منها فقط، حتى لا ينهار النظام برفع FTP غير مكتمل
+foreach (['errors', 'helpers', 'auth', 'audit', 'stats', 'notifications'] as $__core) {
+    $__f = SBA_ROOT . '/core/' . $__core . '.php';
+    if (is_file($__f) && filesize($__f) > 0) require_once $__f;
+}
+unset($__core, $__f);
 
 /**
  * اتصال قاعدة البيانات (PDO Singleton)
