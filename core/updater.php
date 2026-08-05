@@ -108,7 +108,10 @@ function updater_remote_version(): string
 /** الملفات والمجلدات التي لا يلمسها التحديث أبداً */
 function updater_protected(): array
 {
-    return ['config.php', 'install/installed.lock', 'uploads', 'backups', '.git', '.gitignore'];
+    return [
+        'config.php', 'install/installed.lock', 'uploads', 'backups', '.git', '.gitignore',
+        'docs',   // ملفات العرض التقديمي والتوثيق — للمستودع فقط، لا داعي لنسخها لكل تركيب
+    ];
 }
 
 /**

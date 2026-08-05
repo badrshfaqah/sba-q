@@ -1,36 +1,37 @@
 # منصة متابعة جودة البث والمحتوى الإذاعي
-# ملف إعدادات Apache — آمن للعمل داخل مجلد فرعي بجانب WordPress
+# ملف إعدادات Apache — كل التوجيهات محمية بـ IfModule لتفادي خطأ 500 على أي استضافة
+# إن ظهر خطأ 500 بعد الرفع: احذف هذا الملف — المنصة تعمل بدونه تماماً
 
-# منع عرض محتويات المجلدات
-Options -Indexes
-
-# حماية الملفات الحساسة
-<FilesMatch "^(config\.php|VERSION|composer\.(json|lock)|\.gitignore|README\.md)$">
+# حماية الملفات الحساسة من التحميل المباشر
+<FilesMatch "^(config\.php|VERSION|\.gitignore|README\.md)$">
     <IfModule mod_authz_core.c>
         Require all denied
     </IfModule>
     <IfModule !mod_authz_core.c>
-        Order allow,deny
-        Deny from all
+        <IfModule mod_access_compat.c>
+            Order allow,deny
+            Deny from all
+        </IfModule>
     </IfModule>
 </FilesMatch>
 
-# ملفات النسخ الاحتياطي لا تُحمّل مباشرة
-<FilesMatch "\.(sql|log|md)$">
+# ملفات النسخ الاحتياطي والسجلات لا تُحمّل مباشرة
+<FilesMatch "\.(sql|log)$">
     <IfModule mod_authz_core.c>
         Require all denied
     </IfModule>
     <IfModule !mod_authz_core.c>
-        Order allow,deny
-        Deny from all
+        <IfModule mod_access_compat.c>
+            Order allow,deny
+            Deny from all
+        </IfModule>
     </IfModule>
 </FilesMatch>
 
-# ترويسات حماية
+# ترويسات حماية (تُرسل أيضاً من PHP — هذه طبقة إضافية)
 <IfModule mod_headers.c>
     Header set X-Content-Type-Options "nosniff"
     Header set Referrer-Policy "same-origin"
-    Header always set X-Frame-Options "DENY"
 </IfModule>
 
 # ضغط المخرجات لتسريع التصفح

@@ -1,10 +1,23 @@
 # لا يُقرأ محتوى هذا المجلد مباشرة — الملفات تُبث عبر media.php بعد فحص الصلاحية
-Require all denied
-<IfModule !mod_authz_core.c>
-  Order allow,deny
-  Deny from all
+# كل التوجيهات محمية بـ IfModule حتى لا تسبب خطأ 500 على أي استضافة
+
+<IfModule mod_authz_core.c>
+    Require all denied
 </IfModule>
-php_flag engine off
-<FilesMatch "\.(php[0-9]?|phtml|phar)$">
-  Require all denied
-</FilesMatch>
+<IfModule !mod_authz_core.c>
+    <IfModule mod_access_compat.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</IfModule>
+
+# منع تنفيذ أي سكربت داخل مجلد الرفع (يعمل فقط مع mod_php)
+<IfModule mod_php.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_php7.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_php8.c>
+    php_flag engine off
+</IfModule>
