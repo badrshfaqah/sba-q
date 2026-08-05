@@ -17,7 +17,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $a === 'check') {
             'newer'  => version_compare($remote, SBA_VERSION, '>'),
         ];
     } catch (Throwable $e) {
-        $checkError = $e->getMessage();
+        $checkError = safe_error($e, 'تعذر فحص التحديثات');
     }
 }
 
@@ -26,9 +26,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $a === 'run') {
     try {
         @set_time_limit(300);
         $updateLog = updater_run();
-        audit_log('update', 'system', 0, 'تحديث النظام من GitHub إلى إصدار ' . end($updateLog));
+        $newVersion = trim((string)@file_get_contents(SBA_ROOT . '/VERSION')) ?: 'غير معروف';
+        audit_log('update', 'system', 0, 'تحديث النظام من GitHub إلى الإصدار ' . $newVersion);
     } catch (Throwable $e) {
-        $checkError = 'فشل التحديث: ' . $e->getMessage();
+        $checkError = 'فشل التحديث: ' . safe_error($e);
         audit_log('update', 'system', 0, 'فشل تحديث النظام: ' . $e->getMessage());
     }
 }

@@ -69,7 +69,10 @@ function layout_header(string $title = ''): void
                     <span><?= e(role_label($user['role'] ?? '')) ?></span>
                 </div>
             </div>
-            <a href="logout.php" class="btn btn-ghost btn-sm btn-block">تسجيل الخروج</a>
+            <form method="post" action="logout.php">
+                <?= csrf_field() ?>
+                <button type="submit" class="btn btn-ghost btn-sm btn-block">تسجيل الخروج</button>
+            </form>
         </div>
     </aside>
 

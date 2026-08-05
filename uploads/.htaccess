@@ -1,0 +1,10 @@
+# لا يُقرأ محتوى هذا المجلد مباشرة — الملفات تُبث عبر media.php بعد فحص الصلاحية
+Require all denied
+<IfModule !mod_authz_core.c>
+  Order allow,deny
+  Deny from all
+</IfModule>
+php_flag engine off
+<FilesMatch "\.(php[0-9]?|phtml|phar)$">
+  Require all denied
+</FilesMatch>

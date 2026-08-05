@@ -136,8 +136,11 @@ function push_encrypt(string $payload, string $clientP256dh, string $clientAuth)
  */
 function push_send_one(array $sub, array $message): int
 {
-    $endpoint = $sub['endpoint'];
-    $audience = parse_url($endpoint, PHP_URL_SCHEME) . '://' . parse_url($endpoint, PHP_URL_HOST);
+    $endpoint = (string)$sub['endpoint'];
+    $host = (string)parse_url($endpoint, PHP_URL_HOST);
+    // تحقق ثانٍ عند الإرسال (حتى لو تغيّرت القائمة أو الصف قديم)
+    if (!push_allowed_host($host)) return 0;
+    $audience = 'https://' . $host;
     $body = push_encrypt(
         json_encode($message, JSON_UNESCAPED_UNICODE),
         $sub['p256dh'],
@@ -160,6 +163,8 @@ function push_send_one(array $sub, array $message): int
         CURLOPT_TIMEOUT        => 15,
         CURLOPT_CONNECTTIMEOUT => 8,
         CURLOPT_SSL_VERIFYPEER => true,
+        CURLOPT_FOLLOWLOCATION => false,
+        CURLOPT_PROTOCOLS      => CURLPROTO_HTTPS,
     ]);
     curl_exec($ch);
     $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -214,6 +219,21 @@ function push_dispatch(array $subs, string $title, string $body, string $url): a
 
 /* ---------- إدارة الاشتراكات ---------- */
 
+/**
+ * خدمات الدفع المعتمدة — قائمة بيضاء تمنع توجيه الخادم لعناوين داخلية (SSRF)
+ */
+function push_allowed_host(string $host): bool
+{
+    $host = strtolower($host);
+    $exact = ['fcm.googleapis.com', 'android.googleapis.com', 'updates.push.services.mozilla.com', 'web.push.apple.com'];
+    if (in_array($host, $exact, true)) return true;
+    $suffixes = ['.push.services.mozilla.com', '.notify.windows.com', '.push.apple.com', '.googleapis.com'];
+    foreach ($suffixes as $s) {
+        if (substr($host, -strlen($s)) === $s) return true;
+    }
+    return false;
+}
+
 function push_save_subscription(int $userId, array $subscription): bool
 {
     $endpoint = (string)($subscription['endpoint'] ?? '');
@@ -222,12 +242,28 @@ function push_save_subscription(int $userId, array $subscription): bool
     if ($endpoint === '' || $p256dh === '' || $auth === '' || !preg_match('#^https://#', $endpoint)) {
         return false;
     }
+    // لا نقبل إلا عناوين خدمات الدفع المعروفة
+    $host = (string)parse_url($endpoint, PHP_URL_HOST);
+    if ($host === '' || !push_allowed_host($host)) {
+        return false;
+    }
+    // مفاتيح بأطوال صحيحة (65 بايت للنقطة العامة، 16 للسر)
+    if (strlen(b64url_decode($p256dh)) !== 65 || strlen(b64url_decode($auth)) !== 16) {
+        return false;
+    }
+    // لا نسمح بانتزاع اشتراك جهاز مسجّل لمستخدم آخر
+    $hash = hash('sha256', $endpoint);
+    $own = db()->prepare('SELECT user_id FROM ' . tbl('push_subscriptions') . ' WHERE endpoint_hash = ?');
+    $own->execute([$hash]);
+    $existing = $own->fetchColumn();
+    if ($existing !== false && (int)$existing !== $userId) {
+        return false;
+    }
     $st = db()->prepare('INSERT INTO ' . tbl('push_subscriptions') . '
         (user_id, endpoint_hash, endpoint, p256dh, auth, active)
         VALUES (?,?,?,?,?,1)
-        ON DUPLICATE KEY UPDATE user_id = VALUES(user_id), p256dh = VALUES(p256dh),
-                                auth = VALUES(auth), active = 1');
-    $st->execute([$userId, hash('sha256', $endpoint), $endpoint, $p256dh, $auth]);
+        ON DUPLICATE KEY UPDATE p256dh = VALUES(p256dh), auth = VALUES(auth), active = 1');
+    $st->execute([$userId, $hash, $endpoint, $p256dh, $auth]);
     return true;
 }
 

@@ -37,6 +37,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $step === 2) {
         $error = 'اسم قاعدة البيانات واسم المستخدم مطلوبان';
     } elseif (!preg_match('/^[A-Za-z0-9_]{0,20}$/', $db['prefix'])) {
         $error = 'بادئة الجداول يجب أن تكون أحرفاً إنجليزية وأرقاماً فقط';
+    } elseif (!preg_match('/^[A-Za-z0-9._-]+(:\d{1,5})?$/', $db['host'])) {
+        $error = 'صيغة عنوان السيرفر غير صحيحة (مثال: localhost أو 127.0.0.1)';
+    } elseif (!preg_match('/^[A-Za-z0-9_$-]+$/', $db['name'])) {
+        $error = 'اسم قاعدة البيانات يحتوي رموزاً غير مسموحة';
     } else {
         try {
             $pdo = new PDO(
@@ -48,7 +52,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $step === 2) {
             header('Location: ?step=3');
             exit;
         } catch (PDOException $e) {
-            $error = 'فشل الاتصال بقاعدة البيانات: ' . $e->getMessage();
+            $error = 'فشل الاتصال بقاعدة البيانات — تحقق من صحة البيانات المدخلة'
+                . ' (رمز الخطأ: ' . (int)$e->getCode() . ')';
         }
     }
 }

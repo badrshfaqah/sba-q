@@ -10,14 +10,34 @@ define('SBA_VERSION', trim((string)@file_get_contents(SBA_ROOT . '/VERSION')) ?:
 
 // إعدادات الجلسة الآمنة
 if (session_status() === PHP_SESSION_NONE) {
+    $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+        || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https')
+        || (int)($_SERVER['SERVER_PORT'] ?? 0) === 443;
     session_set_cookie_params([
         'lifetime' => 0,
         'path'     => '/',
+        'secure'   => $https,
         'httponly' => true,
         'samesite' => 'Lax',
     ]);
     session_name('SBA_SESSION');
     session_start();
+
+    // انتهاء الجلسة بعد 8 ساعات خمول
+    $idleLimit = 8 * 3600;
+    if (!empty($_SESSION['last_seen']) && (time() - (int)$_SESSION['last_seen']) > $idleLimit) {
+        $_SESSION = [];
+        session_destroy();
+        session_start();
+    }
+    $_SESSION['last_seen'] = time();
+}
+
+/** ترويسات حماية أساسية */
+if (PHP_SAPI !== 'cli' && !headers_sent()) {
+    header('X-Frame-Options: DENY');
+    header('X-Content-Type-Options: nosniff');
+    header('Referrer-Policy: same-origin');
 }
 
 date_default_timezone_set('Asia/Riyadh');

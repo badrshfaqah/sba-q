@@ -190,7 +190,7 @@ layout_header('المستخدمون');
                 <a class="btn btn-sm btn-ghost" href="<?= e(url('users', ['a' => 'edit', 'id' => $u['id']])) ?>">تعديل</a>
                 <?php if ((int)$u['id'] !== (int)$me['id'] && $u['active'] && !is_impersonating()): ?>
                 <form method="post" action="<?= e(url('users', ['a' => 'impersonate'])) ?>" class="inline-form"
-                      onsubmit="return confirm('ستدخل بالنيابة عن <?= e($u['name']) ?> وترى النظام كما يراه تماماً. متابعة؟')">
+                      data-confirm="ستدخل بالنيابة عن هذا المستخدم وترى النظام كما يراه تماماً. متابعة؟">
                     <?= csrf_field() ?>
                     <input type="hidden" name="id" value="<?= (int)$u['id'] ?>">
                     <button type="submit" class="btn btn-sm btn-ghost">&#128373;&#65039; دخول بالنيابة</button>

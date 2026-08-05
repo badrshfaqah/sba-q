@@ -34,7 +34,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $a === 'restore') {
         audit_log('restore', 'database', 0, "استعادة نسخة احتياطية ($count أمراً)");
         flash_set('success', "تمت الاستعادة بنجاح — تم تنفيذ $count أمراً");
     } catch (Throwable $e) {
-        flash_set('danger', 'فشلت الاستعادة: ' . $e->getMessage());
+        flash_set('danger', 'فشلت الاستعادة: ' . safe_error($e, 'تحقق من صحة ملف النسخة الاحتياطية'));
     }
     redirect(url('backup'));
 }

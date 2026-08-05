@@ -33,6 +33,13 @@
         }, 30000);
     }
 
+    /* تأكيد النماذج الحساسة عبر data-confirm (بدل تضمين النص في السمة onsubmit) */
+    document.querySelectorAll('form[data-confirm]').forEach(function (form) {
+        form.addEventListener('submit', function (e) {
+            if (!window.confirm(form.getAttribute('data-confirm'))) e.preventDefault();
+        });
+    });
+
     /* التنبيهات */
     var bell = document.getElementById('notifBell');
     var panel = document.getElementById('notifPanel');

@@ -16,7 +16,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($a === 'demo_load' || $a === 'demo
             ($a === 'demo_load' ? 'تحميل' : 'إزالة') . ' البيانات التجريبية');
         flash_set('success', implode(' • ', $demoLog));
     } catch (Throwable $e) {
-        flash_set('danger', $e->getMessage());
+        flash_set('danger', safe_error($e));
     }
     redirect(url('settings'));
 }

@@ -11,7 +11,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
     $username = trim($_POST['username'] ?? '');
     $password = (string)($_POST['password'] ?? '');
-    if ($username === '' || $password === '') {
+    if (auth_is_throttled()) {
+        $error = 'تم تجاوز عدد محاولات الدخول المسموحة — انتظر 15 دقيقة ثم أعد المحاولة';
+    } elseif ($username === '' || $password === '') {
         $error = 'يرجى إدخال اسم المستخدم وكلمة المرور';
     } elseif (auth_login($username, $password)) {
         redirect('index.php');

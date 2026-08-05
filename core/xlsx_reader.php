@@ -144,23 +144,30 @@ function cell_to_time(string $val): ?string
     $val = trim($val);
     if ($val === '') return null;
 
-    // رقم إكسل التسلسلي
+    // صيغة الساعة المكتوبة "14:30" أو "14.30" — تُفحص أولاً لأن "14.30" رقمية أيضاً
+    if (preg_match('/^(\d{1,2})[.:](\d{2})$/', $val, $m)) {
+        $h = (int)$m[1]; $i = (int)$m[2];
+        if ($h < 24 && $i < 60) return sprintf('%02d:%02d', $h, $i);
+    }
+
+    // ساعة مجردة "14" أو "9"
+    if (preg_match('/^\d{1,2}$/', $val)) {
+        $h = (int)$val;
+        if ($h < 24) return sprintf('%02d:00', $h);
+    }
+
+    // رقم إكسل التسلسلي (كسر من اليوم)
     if (is_numeric($val)) {
         $f = (float)$val;
-        $frac = $f - floor($f);            // جزء الوقت من اليوم
+        $frac = $f - floor($f);
         $secs = (int)round($frac * 86400);
         return sprintf('%02d:%02d', intdiv($secs, 3600), intdiv($secs % 3600, 60));
     }
 
-    // نص وقت
+    // نص وقت عام (مثل "2:30 PM")
     $ts = strtotime($val);
     if ($ts !== false) {
         return date('H:i', $ts);
-    }
-    // صيغة "14.30"
-    if (preg_match('/^(\d{1,2})[.:](\d{2})$/', $val, $m)) {
-        $h = (int)$m[1]; $i = (int)$m[2];
-        if ($h < 24 && $i < 60) return sprintf('%02d:%02d', $h, $i);
     }
     return null;
 }

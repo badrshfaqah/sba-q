@@ -51,24 +51,17 @@ function backup_generate_sql(): string
 }
 
 /** تنفيذ ملف SQL للاستعادة */
+/**
+ * تنفيذ ملف SQL للاستعادة
+ * التقسيم يراعي النصوص المقتبسة حتى لا ينكسر أمر يحتوي فاصلة منقوطة داخل قيمة
+ */
 function backup_restore_sql(string $sqlContent): int
 {
     $pdo = db();
     $count = 0;
-    // تقسيم الأوامر: نهاية سطر تنتهي بفاصلة منقوطة
-    $statements = [];
-    $buffer = '';
-    foreach (preg_split('/\r\n|\r|\n/', $sqlContent) as $line) {
-        $trim = trim($line);
-        if ($trim === '' || strpos($trim, '--') === 0) continue;
-        $buffer .= $line . "\n";
-        if (substr(rtrim($trim), -1) === ';') {
-            $statements[] = $buffer;
-            $buffer = '';
-        }
-    }
-    if (trim($buffer) !== '') $statements[] = $buffer;
+    $statements = backup_split_sql($sqlContent);
 
+    // محاولة تنفيذ ضمن معاملة (DDL في MySQL لا يتراجع، لكنها تحمي بيانات الإدخال)
     foreach ($statements as $stmt) {
         $stmt = trim($stmt);
         if ($stmt === '') continue;
@@ -77,3 +70,60 @@ function backup_restore_sql(string $sqlContent): int
     }
     return $count;
 }
+
+/** تقسيم نص SQL إلى أوامر مع مراعاة النصوص المقتبسة والتعليقات */
+function backup_split_sql(string $sql): array
+{
+    $statements = [];
+    $buffer = '';
+    $len = strlen($sql);
+    $inSingle = false; $inDouble = false; $inBacktick = false; $inComment = false;
+
+    for ($i = 0; $i < $len; $i++) {
+        $ch = $sql[$i];
+
+        if ($inComment) {
+            if ($ch === "\n") $inComment = false;
+            continue;
+        }
+        if (!$inSingle && !$inDouble && !$inBacktick) {
+            // تعليق سطري -- أو #
+            if ($ch === '-' && $i + 1 < $len && $sql[$i + 1] === '-' && trim($buffer) === '') {
+                $inComment = true;
+                continue;
+            }
+            if ($ch === '#' && trim($buffer) === '') {
+                $inComment = true;
+                continue;
+            }
+        }
+
+        $buffer .= $ch;
+
+        if ($inSingle) {
+            if ($ch === '\\' && $i + 1 < $len) { $buffer .= $sql[++$i]; continue; }
+            if ($ch === "'") $inSingle = false;
+            continue;
+        }
+        if ($inDouble) {
+            if ($ch === '\\' && $i + 1 < $len) { $buffer .= $sql[++$i]; continue; }
+            if ($ch === '"') $inDouble = false;
+            continue;
+        }
+        if ($inBacktick) {
+            if ($ch === '`') $inBacktick = false;
+            continue;
+        }
+        if ($ch === "'") { $inSingle = true; continue; }
+        if ($ch === '"') { $inDouble = true; continue; }
+        if ($ch === '`') { $inBacktick = true; continue; }
+
+        if ($ch === ';') {
+            $statements[] = substr($buffer, 0, -1);
+            $buffer = '';
+        }
+    }
+    if (trim($buffer) !== '') $statements[] = $buffer;
+    return $statements;
+}
+

@@ -20,6 +20,23 @@ function current_user(): ?array
     return $user;
 }
 
+/**
+ * حد محاولات الدخول الفاشلة (10 محاولات لكل IP خلال 15 دقيقة)
+ * يعتمد على سجل العمليات فلا يحتاج جدولاً إضافياً
+ */
+function auth_is_throttled(): bool
+{
+    try {
+        $st = db()->prepare('SELECT COUNT(*) FROM ' . tbl('audit_log') . "
+            WHERE action = 'login_failed' AND ip = ?
+              AND created_at >= DATE_SUB(NOW(), INTERVAL 15 MINUTE)");
+        $st->execute([$_SERVER['REMOTE_ADDR'] ?? '']);
+        return (int)$st->fetchColumn() >= 10;
+    } catch (Throwable $e) {
+        return false;
+    }
+}
+
 /** محاولة تسجيل الدخول */
 function auth_login(string $username, string $password): bool
 {
@@ -32,6 +49,8 @@ function auth_login(string $username, string $password): bool
         audit_log('login', 'user', (int)$user['id'], 'تسجيل دخول ناجح');
         return true;
     }
+    // تأخير بسيط يبطئ التخمين الآلي
+    usleep(300000);
     return false;
 }
 

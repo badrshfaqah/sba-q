@@ -30,6 +30,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canManage && $a === 'save') {
     /* رفع المقطع الصوتي (اختياري) */
     $audioPath = null;
     $removeAudio = isset($_POST['remove_audio']);
+    $uploadErr = (int)($_FILES['audio']['error'] ?? UPLOAD_ERR_NO_FILE);
+    if ($uploadErr !== UPLOAD_ERR_OK && $uploadErr !== UPLOAD_ERR_NO_FILE) {
+        $msgs = [
+            UPLOAD_ERR_INI_SIZE   => 'حجم الملف الصوتي يتجاوز الحد المسموح على السيرفر',
+            UPLOAD_ERR_FORM_SIZE  => 'حجم الملف الصوتي يتجاوز الحد المسموح',
+            UPLOAD_ERR_PARTIAL    => 'لم يكتمل رفع الملف الصوتي — أعد المحاولة',
+            UPLOAD_ERR_NO_TMP_DIR => 'إعدادات الرفع غير مهيأة على السيرفر',
+            UPLOAD_ERR_CANT_WRITE => 'تعذر حفظ الملف على السيرفر',
+        ];
+        flash_set('danger', ($msgs[$uploadErr] ?? 'فشل رفع الملف الصوتي') . ' — لم يتم حفظ التغييرات');
+        redirect(url('episodes', $id ? ['a' => 'edit', 'id' => $id] : ['a' => 'add']));
+    }
     if (!empty($_FILES['audio']['tmp_name'])) {
         $ext = strtolower(pathinfo($_FILES['audio']['name'], PATHINFO_EXTENSION));
         $allowed = ['mp3', 'm4a', 'aac', 'wav', 'ogg', 'oga', 'webm'];
@@ -206,7 +218,7 @@ if ($canManage && ($a === 'add' || $a === 'edit')) {
                 <label>المقطع الصوتي للحلقة (اختياري — mp3 / m4a / wav)</label>
                 <?php if (!empty($episode['audio_path']) && is_file(SBA_ROOT . '/' . $episode['audio_path'])): ?>
                 <div class="media-box">
-                    <audio controls preload="none" src="<?= e($episode['audio_path']) ?>"></audio>
+                    <audio controls preload="none" src="media.php?episode=<?= (int)$episode['id'] ?>"></audio>
                     <label class="checkbox-label"><input type="checkbox" name="remove_audio"> حذف المقطع الحالي</label>
                 </div>
                 <?php endif; ?>
@@ -296,13 +308,24 @@ if ($a === 'view') {
     }
 
     [$wt, $wc] = quality_weights();
-    $scores = episode_scores(null, null, 0, 0);
+    // لا نحسب الدرجات إلا لمن يراها فعلاً (تجنب مسح كامل للجدول عند كل عرض)
     $mine = null;
-    foreach ($scores as $srow) { if ((int)$srow['id'] === $id) { $mine = $srow; break; } }
+    if (can('data.viewall')) {
+        foreach (episode_scores($episode['air_date'], $episode['air_date']) as $srow) {
+            if ((int)$srow['id'] === $id) { $mine = $srow; break; }
+        }
+    }
 
-    $st = db()->prepare('SELECT a.type, u.name FROM ' . tbl('episode_evaluators') . ' a
-        JOIN ' . tbl('users') . ' u ON u.id=a.user_id WHERE a.episode_id=? ORDER BY a.type, u.name');
-    $st->execute([$id]);
+    // الموظف يرى تكليفه هو فقط، والإدارة ترى الجميع
+    if (can('data.viewall') || $canManage) {
+        $st = db()->prepare('SELECT a.type, u.name FROM ' . tbl('episode_evaluators') . ' a
+            JOIN ' . tbl('users') . ' u ON u.id=a.user_id WHERE a.episode_id=? ORDER BY a.type, u.name');
+        $st->execute([$id]);
+    } else {
+        $st = db()->prepare('SELECT a.type, u.name FROM ' . tbl('episode_evaluators') . ' a
+            JOIN ' . tbl('users') . ' u ON u.id=a.user_id WHERE a.episode_id=? AND a.user_id=? ORDER BY a.type');
+        $st->execute([$id, (int)$user['id']]);
+    }
     $assignedList = $st->fetchAll();
 
     layout_header('تفاصيل الحلقة');
@@ -326,7 +349,7 @@ if ($a === 'view') {
         <?php if (!empty($episode['audio_path']) && is_file(SBA_ROOT . '/' . $episode['audio_path'])): ?>
         <div class="media-box">
             <label>&#127911; المقطع الصوتي:</label>
-            <audio controls preload="none" src="<?= e($episode['audio_path']) ?>"></audio>
+            <audio controls preload="none" src="media.php?episode=<?= (int)$id ?>"></audio>
         </div>
         <?php endif; ?>
         <?php if (!empty($episode['ref_link'])): ?>

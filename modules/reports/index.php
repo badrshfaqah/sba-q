@@ -463,10 +463,8 @@ elseif ($type === 'stations'):
         $ct = $q && $q['cn'] ? $q['csum'] / $q['cn'] : null;
         $f = $q && $q['fn'] ? $q['fsum'] / $q['fn'] : null;
         $cr = $c['rate'] ?? null;
-        $spiVal = null;
-        if ($f !== null || $cr !== null) {
-            $spiVal = $f === null ? $cr : ($cr === null ? $f * 10 : ($f * 10) * 0.6 + $cr * 0.4);
-        }
+        // المؤشر المركب يتطلب البعدين معاً حتى تكون المقارنة عادلة
+        $spiVal = ($f !== null && $cr !== null) ? ($f * 10) * 0.6 + $cr * 0.4 : null;
         $rows[] = ['name' => $s['name'], 'eps' => $q['eps'] ?? 0, 't' => $t, 'c' => $ct, 'f' => $f,
                    'rate' => $cr, 'checks' => (int)($c['total'] ?? 0), 'spi' => $spiVal];
     }
@@ -505,7 +503,7 @@ else:
             MAX(ev.score) AS max_score,
             MIN(ev.score) AS min_score,
             AVG(ev.score) AS avg_score,
-            AVG(TIMESTAMPDIFF(HOUR, CONCAT(e.air_date, " ", e.air_time), ev.created_at)) AS avg_delay_h,
+            AVG(GREATEST(TIMESTAMPDIFF(HOUR, CONCAT(e.air_date, " ", e.air_time), ev.created_at), 0)) AS avg_delay_h,
             SUM(CASE WHEN ev.created_at > DATE_ADD(CONCAT(e.air_date, " ", e.air_time), INTERVAL 3 DAY) THEN 1 ELSE 0 END) AS late_count
         FROM ' . tbl('users') . ' u
         JOIN ' . tbl('evaluations') . ' ev ON ev.user_id = u.id

@@ -1,0 +1,47 @@
+# منصة متابعة جودة البث والمحتوى الإذاعي
+# ملف إعدادات Apache — آمن للعمل داخل مجلد فرعي بجانب WordPress
+
+# منع عرض محتويات المجلدات
+Options -Indexes
+
+# حماية الملفات الحساسة
+<FilesMatch "^(config\.php|VERSION|composer\.(json|lock)|\.gitignore|README\.md)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# ملفات النسخ الاحتياطي لا تُحمّل مباشرة
+<FilesMatch "\.(sql|log|md)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# ترويسات حماية
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set Referrer-Policy "same-origin"
+    Header always set X-Frame-Options "DENY"
+</IfModule>
+
+# ضغط المخرجات لتسريع التصفح
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/css application/javascript application/json
+</IfModule>
+
+# تخزين مؤقت للأصول الثابتة
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType text/css "access plus 7 days"
+    ExpiresByType application/javascript "access plus 7 days"
+    ExpiresByType image/png "access plus 30 days"
+</IfModule>

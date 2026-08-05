@@ -6,6 +6,10 @@ function audit_log(string $action, string $entity = '', int $entityId = 0, strin
 {
     try {
         $uid = !empty($_SESSION['uid']) ? (int)$_SESSION['uid'] : null;
+        // أثناء الدخول بالنيابة: توثيق المدير الحقيقي منفذ العملية
+        if (!empty($_SESSION['impersonator_id'])) {
+            $details = '[بالنيابة — نفّذها المدير #' . (int)$_SESSION['impersonator_id'] . '] ' . $details;
+        }
         $ip  = $_SERVER['REMOTE_ADDR'] ?? '';
         $st  = db()->prepare('INSERT INTO ' . tbl('audit_log') . '
             (user_id, action, entity, entity_id, details, ip, created_at)

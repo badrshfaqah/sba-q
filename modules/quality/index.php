@@ -117,7 +117,7 @@ layout_header('تقييم ' . eval_type_label($type));
     <?php if ($episode['audio_path'] && is_file(SBA_ROOT . '/' . $episode['audio_path'])): ?>
     <div class="media-box">
         <label>&#127911; استمع للحلقة أثناء التقييم:</label>
-        <audio controls preload="none" src="<?= e($episode['audio_path']) ?>"></audio>
+        <audio controls preload="none" src="media.php?episode=<?= (int)$episodeId ?>"></audio>
     </div>
     <?php endif; ?>
     <?php if ($episode['ref_link']): ?>

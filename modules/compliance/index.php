@@ -101,7 +101,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $a === 'import') {
         redirect(url('compliance', ['date' => $date]));
     } catch (Throwable $ex) {
         if (isset($pdo) && $pdo->inTransaction()) $pdo->rollBack();
-        flash_set('danger', 'فشل الاستيراد: ' . $ex->getMessage());
+        flash_set('danger', 'فشل الاستيراد: ' . safe_error($ex, 'تحقق من صيغة الملف'));
         redirect(url('compliance', ['a' => 'import']));
     }
 }

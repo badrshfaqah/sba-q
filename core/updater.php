@@ -15,7 +15,9 @@ function updater_repo(): string
 function updater_branch(): string
 {
     $b = trim((string)setting('update_branch', 'main'));
-    return preg_match('#^[\w./-]+$#', $b) ? $b : 'main';
+    // منع الخروج عن المستودع عبر ../ في اسم الفرع
+    if (strpos($b, '..') !== false) return 'main';
+    return preg_match('#^[\w.-]+(/[\w.-]+)*$#', $b) ? $b : 'main';
 }
 
 /**

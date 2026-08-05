@@ -105,12 +105,14 @@ foreach (station_rankings($prevFrom, $prevTo) as $r) $prevQuality[$r['station_id
 $prevComp = [];
 foreach (compliance_by_station($prevFrom, $prevTo) as $r) $prevComp[$r['id']] = $r['rate'];
 
-/* ---------- مؤشر الأداء المركب SPI = جودة 60% + التزام 40% ---------- */
+/**
+ * مؤشر الأداء المركب SPI = جودة 60% + التزام 40%
+ * يتطلب توفر البعدين معاً — وإلا فالمقارنة غير عادلة
+ * (إذاعة بلا تقييمات جودة لا تُقارن بمن قيست عليها الجودة)
+ */
 function spi(?float $q, ?float $c): ?float
 {
-    if ($q === null && $c === null) return null;
-    if ($q === null) return $c;
-    if ($c === null) return $q * 10;
+    if ($q === null || $c === null) return null;
     return ($q * 10) * 0.6 + $c * 0.4;
 }
 
@@ -157,11 +159,15 @@ foreach ($allStations as $s) {
 
 /* ---------- ترتيب المؤشر المركب مع الاتجاه ---------- */
 $spiRows = [];
+$spiIncomplete = [];
 foreach ($allStations as $s) {
     $q = $qualityByStation[$s['id']]['avg'] ?? null;
     $c = $compByStation[$s['id']]['rate'] ?? null;
     $now = spi($q, $c);
-    if ($now === null) continue;
+    if ($now === null) {
+        if ($q !== null || $c !== null) $spiIncomplete[] = $s['name'];
+        continue;
+    }
     $prev = spi($prevQuality[$s['id']] ?? null, $prevComp[$s['id']] ?? null);
     $spiRows[] = ['name' => $s['name'], 'spi' => $now, 'delta' => $prev !== null ? $now - $prev : null];
 }
@@ -328,6 +334,9 @@ layout_header('ذكاء الأعمال');
                  style="width:<?= round($r['spi']) ?>%"></div></div>
         </div>
         <?php endforeach; endif; ?>
+        <?php if ($spiIncomplete): ?>
+        <p class="muted">خارج الترتيب لنقص أحد البعدين: <?= e(implode('، ', $spiIncomplete)) ?></p>
+        <?php endif; ?>
     </div>
 
     <div class="card">

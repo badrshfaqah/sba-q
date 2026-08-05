@@ -146,6 +146,20 @@ function input(string $key, $default = '')
     return trim((string)($_POST[$key] ?? $_GET[$key] ?? $default));
 }
 
+/**
+ * رسالة خطأ آمنة للعرض
+ * رسائلنا الخاصة (RuntimeException) تُعرض كما هي لأنها مكتوبة للمستخدم،
+ * أما أخطاء قاعدة البيانات فتُسجَّل ولا يُعرض منها تفاصيل المخطط
+ */
+function safe_error(Throwable $e, string $fallback = 'حدث خطأ أثناء تنفيذ العملية'): string
+{
+    if ($e instanceof PDOException) {
+        audit_log('error', 'system', 0, 'خطأ قاعدة بيانات: ' . mb_substr($e->getMessage(), 0, 300));
+        return $fallback . ' — تم تسجيل التفاصيل في سجل العمليات';
+    }
+    return $e->getMessage() ?: $fallback;
+}
+
 /** ترقيم الصفحات */
 function paginate(int $total, int $perPage, int $page): array
 {
