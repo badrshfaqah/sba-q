@@ -54,6 +54,7 @@ if (!file_exists(SBA_ROOT . '/config.php')) {
 }
 
 require_once SBA_ROOT . '/config.php';
+require_once SBA_ROOT . '/core/errors.php';   // يمنع ظهور خطأ 500 للمستخدم
 require_once SBA_ROOT . '/core/helpers.php';
 require_once SBA_ROOT . '/core/auth.php';
 require_once SBA_ROOT . '/core/audit.php';
