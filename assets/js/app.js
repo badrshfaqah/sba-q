@@ -7,20 +7,69 @@
         navigator.serviceWorker.register('sw.js').catch(function () {});
     }
 
-    /* قائمة الجوال */
+    /* قائمة الجوال — تُفتح من زر الشريط العلوي أو من «المزيد» في الشريط السفلي */
     var toggle = document.getElementById('menuToggle');
+    var tabMore = document.getElementById('tabMore');
     var sidebar = document.getElementById('sidebar');
     var overlay = document.getElementById('sidebarOverlay');
-    if (toggle && sidebar && overlay) {
-        toggle.addEventListener('click', function () {
-            sidebar.classList.toggle('open');
-            overlay.classList.toggle('show');
-        });
-        overlay.addEventListener('click', function () {
-            sidebar.classList.remove('open');
-            overlay.classList.remove('show');
+
+    function openMenu() {
+        if (!sidebar) return;
+        sidebar.classList.add('open');
+        if (overlay) overlay.classList.add('show');
+    }
+    function closeMenu() {
+        if (!sidebar) return;
+        sidebar.classList.remove('open');
+        if (overlay) overlay.classList.remove('show');
+    }
+    function toggleMenu() {
+        if (!sidebar) return;
+        sidebar.classList.contains('open') ? closeMenu() : openMenu();
+    }
+
+    if (toggle) toggle.addEventListener('click', toggleMenu);
+    if (tabMore) tabMore.addEventListener('click', toggleMenu);
+    if (overlay) overlay.addEventListener('click', closeMenu);
+
+    /* سحب القائمة للأسفل لإغلاقها (سلوك أوراق التطبيقات) */
+    if (sidebar) {
+        var startY = null;
+        sidebar.addEventListener('touchstart', function (e) {
+            startY = sidebar.scrollTop <= 0 ? e.touches[0].clientY : null;
+        }, { passive: true });
+        sidebar.addEventListener('touchmove', function (e) {
+            if (startY === null) return;
+            var dy = e.touches[0].clientY - startY;
+            if (dy > 70) { closeMenu(); startY = null; }
+        }, { passive: true });
+    }
+
+    /* تحويل الجداول إلى بطاقات على الجوال — بلا تعديل أي صفحة */
+    function tablesToCards() {
+        if (window.innerWidth > 900) return;
+        var skip = 'compliance-grid heatmap compliance-record'.split(' ');
+        document.querySelectorAll('table.table').forEach(function (tbl) {
+            if (tbl.dataset.carded) return;
+            if (skip.some(function (c) { return tbl.classList.contains(c); })) return;
+
+            var heads = Array.prototype.map.call(
+                tbl.querySelectorAll('thead th'),
+                function (th) { return th.textContent.trim(); }
+            );
+            if (!heads.length) return;
+
+            tbl.querySelectorAll('tbody tr').forEach(function (tr) {
+                Array.prototype.forEach.call(tr.children, function (td, i) {
+                    if (heads[i]) td.setAttribute('data-label', heads[i]);
+                });
+            });
+            tbl.classList.add('as-cards');
+            tbl.dataset.carded = '1';
         });
     }
+    tablesToCards();
+    window.addEventListener('resize', tablesToCards);
 
     /* ساعة الشريط العلوي (24 ساعة) */
     var clock = document.getElementById('topbarClock');

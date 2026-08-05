@@ -847,13 +847,182 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 18px 0; }
   body { background: #fff; }
 }
 
-/* ---------- التجاوب مع الجوال ---------- */
+/* =====================================================
+   وضع التطبيق على الجوال
+   ===================================================== */
 .sidebar-overlay {
   display: none;
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.4);
   z-index: 45;
+}
+
+/* شريط التنقل السفلي — يظهر على الجوال فقط */
+.tabbar { display: none; }
+
+@media (max-width: 900px) {
+  /* إحساس التطبيق: لا تحديد نص ولا وميض لمس على عناصر الواجهة */
+  .topbar, .tabbar, .sidebar, .btn, .tab, .nav-item, .score-option, .status-option {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  body {
+    overscroll-behavior-y: contain;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  /* الشريط العلوي: مضغوط وثابت مع احترام منطقة الآيفون العلوية */
+  .topbar {
+    padding: 10px 16px;
+    padding-top: calc(10px + env(safe-area-inset-top));
+    border-bottom: 1px solid var(--line);
+    backdrop-filter: saturate(180%) blur(12px);
+    -webkit-backdrop-filter: saturate(180%) blur(12px);
+    background: rgba(252, 252, 251, 0.88);
+  }
+  .page-title { font-size: 1.05rem; font-weight: 700; }
+  .menu-toggle { display: none; }   /* التنقل صار من الشريط السفلي */
+
+  /* مساحة أسفل المحتوى بمقدار الشريط السفلي */
+  .content {
+    padding: 12px 14px;
+    padding-bottom: calc(76px + env(safe-area-inset-bottom));
+  }
+  .footer { display: none; }
+
+  .tabbar {
+    display: flex;
+    position: fixed;
+    inset-inline: 0;
+    bottom: 0;
+    z-index: 60;
+    background: rgba(252, 252, 251, 0.94);
+    backdrop-filter: saturate(180%) blur(14px);
+    -webkit-backdrop-filter: saturate(180%) blur(14px);
+    border-top: 1px solid var(--line);
+    padding-bottom: env(safe-area-inset-bottom);
+    box-shadow: 0 -1px 12px rgba(11, 11, 11, 0.05);
+  }
+  .tab-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    padding: 8px 2px 7px;
+    background: none;
+    border: 0;
+    font-family: inherit;
+    color: var(--muted);
+    text-decoration: none;
+    cursor: pointer;
+    min-height: 56px;
+    transition: color 0.15s;
+  }
+  .tab-item:hover { text-decoration: none; }
+  .tab-item:active { background: rgba(42, 120, 214, 0.06); }
+  .tab-icon { font-size: 1.2rem; line-height: 1; }
+  .tab-label { font-size: 0.66rem; font-weight: 600; }
+  .tab-item.active { color: var(--primary); }
+  .tab-item.active .tab-icon { transform: translateY(-1px); }
+
+  /* القائمة الجانبية تنزلق من الأسفل كورقة تطبيق */
+  .sidebar {
+    inset: auto 0 0 0;
+    width: 100%;
+    max-height: 78vh;
+    border-radius: 18px 18px 0 0;
+    border-inline-start: 0;
+    transform: translateY(100%);
+    padding-bottom: env(safe-area-inset-bottom);
+    box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.18);
+  }
+  .sidebar.open { transform: translateY(0); }
+  .sidebar::before {
+    content: '';
+    display: block;
+    width: 38px;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--line);
+    margin: 9px auto 2px;
+    flex-shrink: 0;
+  }
+  .sidebar-brand { padding: 10px 18px 12px; }
+  .nav-item { padding: 13px 18px; border-right: 0; border-radius: 0; }
+  .nav-item.active { border-right: 3px solid var(--primary); }
+
+  /* البطاقات بحواف أنعم وبلا ظل ثقيل */
+  .card { padding: 15px; border-radius: 14px; box-shadow: none; margin-bottom: 12px; }
+  .grid-2 { gap: 12px; margin-bottom: 12px; }
+  .kpi-card { border-radius: 12px; }
+
+  /* أزرار بحجم لمس مريح مع استجابة ضغط */
+  .btn { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
+  .btn:active { transform: scale(0.97); }
+  .btn-sm { min-height: 36px; }
+
+  /* الحقول: 16px يمنع تكبير الشاشة تلقائياً على iOS */
+  .form-group input, .form-group select, .form-group textarea,
+  .inline-form input, .inline-form select {
+    font-size: 16px;
+    min-height: 44px;
+    border-radius: 10px;
+  }
+
+  /* لوحة التنبيهات كورقة منسدلة بعرض الشاشة */
+  .notif-panel {
+    position: fixed;
+    inset-inline: 10px;
+    top: calc(58px + env(safe-area-inset-top));
+    width: auto;
+    max-width: none;
+    border-radius: 14px;
+  }
+
+  /* ---------- الجداول تتحول لبطاقات (يضيف JS وسم data-label) ----------
+     تُستثنى المصفوفات: شاشة الالتزام والخرائط الحرارية */
+  .table.as-cards { display: block; }
+  .table.as-cards thead { display: none; }
+  .table.as-cards tbody, .table.as-cards tr, .table.as-cards td { display: block; width: 100%; }
+  .table.as-cards tr {
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 10px 12px;
+    margin-bottom: 10px;
+    background: var(--surface);
+  }
+  .table.as-cards tr:hover { background: var(--surface); }
+  .table.as-cards td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6px 0;
+    border-bottom: 1px dashed var(--line);
+    text-align: start;
+  }
+  .table.as-cards td:last-child { border-bottom: 0; padding-bottom: 0; }
+  .table.as-cards td::before {
+    content: attr(data-label);
+    color: var(--muted);
+    font-size: 0.76rem;
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+  .table.as-cards td:empty { display: none; }
+  .table.as-cards td.actions-cell { justify-content: flex-start; padding-top: 10px; }
+  .table.as-cards td.actions-cell::before { content: none; }
+  .table.as-cards .table-wrap { overflow: visible; }
+}
+
+/* داخل التطبيق المثبّت: إخفاء ما يذكّر بالمتصفح */
+@media (display-mode: standalone) {
+  .topbar-clock { display: none; }
+  body { overscroll-behavior: none; }
 }
 
 /* عمود الوقت ثابت أثناء التمرير الأفقي (شاشة الالتزام والخرائط الحرارية) */
@@ -905,19 +1074,15 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 18px 0; }
 
 @media (max-width: 900px) {
   .sidebar {
-    transform: translateX(100%);
-    transition: transform 0.22s ease;
-    box-shadow: -4px 0 20px rgba(0, 0, 0, 0.15);
+    transition: transform 0.24s cubic-bezier(0.32, 0.72, 0, 1);
   }
-  .sidebar.open { transform: translateX(0); }
   .sidebar-overlay.show { display: block; }
   .main { margin-right: 0; }
-  .menu-toggle { display: block; }
+  .menu-toggle { display: none; }   /* التنقل من الشريط السفلي */
   .grid-2 { grid-template-columns: 1fr; }
   .form-row { grid-template-columns: 1fr; }
-  .content { padding: 14px; }
   .topbar-clock { display: none; }
   .card-header { flex-direction: column; align-items: stretch; }
   .header-actions { justify-content: flex-start; }
-  .kpi-value { font-size: 1.4rem; }
+  .kpi-value { font-size: 1.45rem; }
 }

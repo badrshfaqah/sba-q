@@ -2,25 +2,50 @@
 /** القالب العام: هيدر + قائمة جانبية + فوتر */
 if (!defined('SBA')) exit;
 
+/**
+ * أقسام القائمة: [المعرف، الاسم، الأيقونة، الاسم المختصر للشريط السفلي]
+ */
 function layout_nav_items(): array
 {
     $items = [];
-    if (can('dashboard.view'))   $items[] = ['dashboard',  'الرئيسية',        '&#127968;'];
-    if (can('stations.manage') || can('data.viewall')) $items[] = ['stations', 'الإذاعات', '&#128251;'];
-    if (can('programs.manage') || can('data.viewall')) $items[] = ['programs', 'البرامج',  '&#127908;'];
+    if (can('dashboard.view'))   $items[] = ['dashboard',  'الرئيسية',        '&#127968;', 'الرئيسية'];
+    if (can('stations.manage') || can('data.viewall')) $items[] = ['stations', 'الإذاعات', '&#128251;', 'الإذاعات'];
+    if (can('programs.manage') || can('data.viewall')) $items[] = ['programs', 'البرامج',  '&#127908;', 'البرامج'];
     if (can('episodes.manage') || can('eval.technical') || can('eval.content'))
-                                 $items[] = ['episodes',   'الحلقات والتقييم', '&#127911;'];
-    if (can('compliance.view'))  $items[] = ['compliance', 'التزام البث',      '&#128337;'];
-    if (can('reports.view'))     $items[] = ['reports',    'التقارير',         '&#128202;'];
-    if (can('reports.view'))     $items[] = ['analytics',  'ذكاء الأعمال',     '&#128200;'];
-    if (can('evaluators.assign'))$items[] = ['followup',   'متابعة الموظفين',  '&#127919;'];
-    if (can('users.manage'))     $items[] = ['users',      'المستخدمون',       '&#128101;'];
-    if (can('settings.manage'))  $items[] = ['settings',   'الإعدادات',        '&#9881;&#65039;'];
-    if (can('audit.view'))       $items[] = ['audit',      'سجل العمليات',     '&#128220;'];
-    if (can('backup.manage'))    $items[] = ['backup',     'النسخ الاحتياطي',  '&#128190;'];
-    if (can('update.manage'))    $items[] = ['update',     'تحديث النظام',     '&#128260;'];
-    if (can('dashboard.view'))   $items[] = ['app',        'التطبيق والإشعارات', '&#128241;'];
+                                 $items[] = ['episodes',   'الحلقات والتقييم', '&#127911;', 'الحلقات'];
+    if (can('compliance.view'))  $items[] = ['compliance', 'التزام البث',      '&#128337;', 'الالتزام'];
+    if (can('reports.view'))     $items[] = ['reports',    'التقارير',         '&#128202;', 'التقارير'];
+    if (can('reports.view'))     $items[] = ['analytics',  'ذكاء الأعمال',     '&#128200;', 'التحليل'];
+    if (can('evaluators.assign'))$items[] = ['followup',   'متابعة الموظفين',  '&#127919;', 'المتابعة'];
+    if (can('users.manage'))     $items[] = ['users',      'المستخدمون',       '&#128101;', 'المستخدمون'];
+    if (can('settings.manage'))  $items[] = ['settings',   'الإعدادات',        '&#9881;&#65039;', 'الإعدادات'];
+    if (can('audit.view'))       $items[] = ['audit',      'سجل العمليات',     '&#128220;', 'السجل'];
+    if (can('backup.manage'))    $items[] = ['backup',     'النسخ الاحتياطي',  '&#128190;', 'النسخ'];
+    if (can('update.manage'))    $items[] = ['update',     'تحديث النظام',     '&#128260;', 'التحديث'];
+    if (can('dashboard.view'))   $items[] = ['app',        'التطبيق والإشعارات', '&#128241;', 'الإشعارات'];
     return $items;
+}
+
+/**
+ * أقسام الشريط السفلي: الأكثر استخداماً حسب الدور
+ * (تُختار المتاحة بالترتيب، ثم يُكمَّل العدد من بقية الأقسام)
+ */
+function layout_tab_items(array $items): array
+{
+    $preferred = ['dashboard', 'episodes', 'compliance', 'reports', 'followup', 'stations'];
+    $byMod = [];
+    foreach ($items as $it) $byMod[$it[0]] = $it;
+
+    $tabs = [];
+    foreach ($preferred as $mod) {
+        if (count($tabs) === 4) break;
+        if (isset($byMod[$mod])) { $tabs[] = $byMod[$mod]; unset($byMod[$mod]); }
+    }
+    foreach ($byMod as $it) {
+        if (count($tabs) >= 4) break;
+        $tabs[] = $it;
+    }
+    return $tabs;
 }
 
 function layout_header(string $title = ''): void
@@ -32,15 +57,17 @@ function layout_header(string $title = ''): void
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=5.0">
 <title><?= e($title) ?> | <?= e($site) ?></title>
 <link rel="icon" type="image/png" href="assets/img/SBA_logo.png">
 <link rel="manifest" href="manifest.webmanifest">
-<meta name="theme-color" content="#2a78d6">
+<meta name="theme-color" content="#fcfcfb">
 <link rel="apple-touch-icon" href="assets/img/icon-180.png">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="جودة البث">
+<meta name="format-detection" content="telephone=no">
 <link rel="stylesheet" href="assets/css/style.css?v=<?= SBA_VERSION ?>">
 </head>
 <body>
@@ -120,6 +147,9 @@ function layout_header(string $title = ''): void
 
 function layout_footer(): void
 {
+    $current = $_GET['m'] ?? 'dashboard';
+    // أهم أربعة أقسام في الشريط السفلي، والباقي خلف زر «المزيد»
+    $primary = layout_tab_items(layout_nav_items());
     ?>
         </main>
         <footer class="footer">
@@ -127,6 +157,21 @@ function layout_footer(): void
         </footer>
     </div>
 </div>
+
+<!-- شريط التنقل السفلي (يظهر على الجوال فقط) -->
+<nav class="tabbar" id="tabbar">
+    <?php foreach ($primary as $it): ?>
+    <a href="<?= e(url($it[0])) ?>" class="tab-item<?= $current === $it[0] ? ' active' : '' ?>">
+        <span class="tab-icon"><?= $it[2] ?></span>
+        <span class="tab-label"><?= e($it[3] ?? $it[1]) ?></span>
+    </a>
+    <?php endforeach; ?>
+    <button type="button" class="tab-item" id="tabMore">
+        <span class="tab-icon">&#9776;</span>
+        <span class="tab-label">المزيد</span>
+    </button>
+</nav>
+
 <div class="sidebar-overlay" id="sidebarOverlay"></div>
 <script src="assets/js/app.js?v=<?= SBA_VERSION ?>"></script>
 </body>

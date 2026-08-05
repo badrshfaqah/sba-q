@@ -38,6 +38,7 @@ if ($isEvaluator) {
     $myTotal = count($pending) + count($done);
     $myRate = $myTotal ? 100 * count($done) / $myTotal : null;
     ?>
+    <?php if ($myTotal > 0): /* لا تُعرض المؤشرات الشخصية لمن لا مهام له */ ?>
     <div class="kpi-grid">
         <div class="kpi-card"><div class="kpi-label">مهام معلقة</div>
             <div class="kpi-value <?= $pending ? 'kpi-bad' : 'kpi-good' ?>"><?= count($pending) ?></div></div>
@@ -50,6 +51,8 @@ if ($isEvaluator) {
         <div class="kpi-card"><div class="kpi-label">متوسط درجاتي</div>
             <div class="kpi-value"><?= fmt_num($myAvg) ?></div></div>
     </div>
+    <?php endif; ?>
+    <?php if ($myTotal > 0 || !$showAnalytics): ?>
     <div class="card">
         <div class="card-header">
             <h2>&#128203; مهامي</h2>
@@ -111,6 +114,7 @@ if ($isEvaluator) {
             <?php endif; ?>
         </div>
     </div>
+    <?php endif; ?>
     <?php
 }
 
