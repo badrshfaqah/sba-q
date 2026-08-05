@@ -121,10 +121,77 @@ function updater_protected(): array
  *  3. نسخ الملفات فوق التركيب الحالي (مع حماية config والرفعات)
  *  4. تشغيل ترقيات قاعدة البيانات
  */
+/** كتابة خطوة في سجل التحديث (يبقى حتى لو مات الطلب بخطأ 500) */
+function updater_log(string $line): void
+{
+    $file = SBA_ROOT . '/backups/update.log';
+    if (!is_dir(dirname($file))) @mkdir(dirname($file), 0755, true);
+    @file_put_contents($file, '[' . date('Y-m-d H:i:s') . '] ' . $line . "\n", FILE_APPEND);
+}
+
+/**
+ * تنزيل ملف إلى القرص مباشرة (بلا تحميله كاملاً في الذاكرة)
+ * يقلل استهلاك الذاكرة على الاستضافات المحدودة
+ */
+function updater_download(string $url, string $dest): void
+{
+    $headers = updater_auth_headers();
+    $headers[] = 'User-Agent: SBA-Quality-Updater';
+
+    if (function_exists('curl_init')) {
+        $fh = fopen($dest, 'wb');
+        if (!$fh) throw new RuntimeException('تعذر إنشاء ملف مؤقت في مجلد backups — تحقق من صلاحيات الكتابة');
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_FILE           => $fh,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS      => 5,
+            CURLOPT_TIMEOUT        => 180,
+            CURLOPT_CONNECTTIMEOUT => 20,
+            CURLOPT_HTTPHEADER     => $headers,
+            CURLOPT_SSL_VERIFYPEER => true,
+        ]);
+        $ok   = curl_exec($ch);
+        $err  = curl_error($ch);
+        $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        if (PHP_VERSION_ID < 80000) curl_close($ch);
+        fclose($fh);
+        if ($ok === false || $code >= 400) {
+            @unlink($dest);
+            throw new RuntimeException($code >= 400
+                ? "الخادم البعيد أعاد رمز الخطأ $code — تحقق من اسم المستودع والفرع"
+                : 'فشل تنزيل الحزمة: ' . $err);
+        }
+        return;
+    }
+
+    $ctx = stream_context_create(['http' => [
+        'timeout' => 180, 'follow_location' => 1, 'header' => implode("\r\n", $headers),
+    ]]);
+    $in = @fopen($url, 'rb', false, $ctx);
+    if (!$in) throw new RuntimeException('تعذر الاتصال بالمستودع — فعّل cURL أو allow_url_fopen');
+    $out = fopen($dest, 'wb');
+    stream_copy_to_stream($in, $out);
+    fclose($in);
+    fclose($out);
+}
+
 function updater_run(): array
 {
     $log = [];
     $root = SBA_ROOT;
+
+    // سجل جديد لكل عملية + التقاط أي خطأ قاتل يوقف الطلب
+    if (!is_dir($root . '/backups')) @mkdir($root . '/backups', 0755, true);
+    @file_put_contents($root . '/backups/update.log',
+        '=== بدء التحديث ' . date('Y-m-d H:i:s') . ' — PHP ' . PHP_VERSION
+        . ' | ذاكرة ' . ini_get('memory_limit') . ' | مهلة ' . ini_get('max_execution_time') . "s ===\n");
+    register_shutdown_function(function () {
+        $e = error_get_last();
+        if ($e && in_array($e['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR], true)) {
+            updater_log('!! توقف بخطأ قاتل: ' . $e['message'] . ' @ ' . basename($e['file']) . ':' . $e['line']);
+        }
+    });
 
     if (!is_writable($root)) {
         throw new RuntimeException('مجلد النظام غير قابل للكتابة — التحديث الذاتي يتطلب صلاحية كتابة');
@@ -132,14 +199,18 @@ function updater_run(): array
     if (!class_exists('ZipArchive')) {
         throw new RuntimeException('امتداد Zip غير مفعل على السيرفر');
     }
+    if (!function_exists('curl_init') && !ini_get('allow_url_fopen')) {
+        throw new RuntimeException('لا يمكن الاتصال بالإنترنت — امتداد cURL معطّل و allow_url_fopen مغلق');
+    }
 
     // 1) نسخة احتياطية تلقائية
+    updater_log('1) توليد النسخة الاحتياطية...');
     require_once $root . '/core/backup.php';
     $backupDir = $root . '/backups';
-    if (!is_dir($backupDir)) @mkdir($backupDir, 0755, true);
     $backupFile = $backupDir . '/pre_update_' . date('Y-m-d_Hi') . '.sql';
     file_put_contents($backupFile, backup_generate_sql());
     $log[] = 'نسخة احتياطية تلقائية: backups/' . basename($backupFile);
+    updater_log('   ✓ ' . basename($backupFile) . ' (' . number_format(filesize($backupFile) / 1024, 0) . ' KB)');
 
     // 2) تنزيل ZIP (عبر API مع رمز الوصول للمستودعات الخاصة، أو الرابط العام)
     if (updater_token() !== '') {
@@ -147,11 +218,14 @@ function updater_run(): array
     } else {
         $zipUrl = 'https://codeload.github.com/' . updater_repo() . '/zip/refs/heads/' . updater_branch();
     }
+    updater_log('2) تنزيل الحزمة من المستودع...');
     $tmpZip = $backupDir . '/update_tmp.zip';
-    file_put_contents($tmpZip, updater_http_get($zipUrl, 120, updater_auth_headers()));
+    updater_download($zipUrl, $tmpZip);
     $log[] = 'تم تنزيل حزمة التحديث (' . number_format(filesize($tmpZip) / 1024, 0) . ' KB)';
+    updater_log('   ✓ ' . number_format(filesize($tmpZip) / 1024, 0) . ' KB');
 
-    // 3) فك الضغط في مجلد مؤقت
+    // 3) فك الضغط في مجلد مؤقت (مع تخطي مجلد docs الثقيل)
+    updater_log('3) فك ضغط الحزمة...');
     $tmpDir = $backupDir . '/update_tmp';
     updater_rrmdir($tmpDir);
     @mkdir($tmpDir, 0755, true);
@@ -160,9 +234,17 @@ function updater_run(): array
         @unlink($tmpZip);
         throw new RuntimeException('تعذر فتح حزمة التحديث');
     }
-    $zip->extractTo($tmpDir);
+    $wanted = [];
+    for ($i = 0; $i < $zip->numFiles; $i++) {
+        $name = $zip->getNameIndex($i);
+        if ($name === false) continue;
+        if (strpos($name, '/docs/') !== false) continue;   // العرض التقديمي لا يُنسخ للتركيبات
+        $wanted[] = $name;
+    }
+    $zip->extractTo($tmpDir, $wanted);
     $zip->close();
     @unlink($tmpZip);
+    updater_log('   ✓ ' . count($wanted) . ' عنصراً');
 
     // GitHub يضع المحتوى داخل مجلد باسم repo-branch
     $entries = array_values(array_diff(scandir($tmpDir), ['.', '..']));
@@ -177,17 +259,22 @@ function updater_run(): array
     $newVersion = trim((string)file_get_contents($srcRoot . '/VERSION'));
 
     // 4) نسخ الملفات فوق التركيب الحالي
+    updater_log('4) نسخ الملفات (الإصدار الجديد: ' . $newVersion . ')...');
     $copied = updater_copy_tree($srcRoot, $root, '');
     updater_rrmdir($tmpDir);
     $log[] = "تم تحديث $copied ملفاً من المستودع";
+    updater_log('   ✓ ' . $copied . ' ملفاً');
 
     // 5) ترقية قاعدة البيانات
+    updater_log('5) ترقية قاعدة البيانات...');
     require_once $root . '/install/migrations.php';
     foreach (sba_run_migrations(db(), DB_PREFIX, $newVersion) as $line) {
         $log[] = $line;
+        updater_log('   ' . $line);
     }
 
     $log[] = "اكتمل التحديث إلى الإصدار $newVersion";
+    updater_log('=== اكتمل التحديث بنجاح إلى ' . $newVersion . ' ===');
     return $log;
 }
 

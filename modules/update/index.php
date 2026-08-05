@@ -108,6 +108,19 @@ layout_header('تحديث النظام');
             </div>
         <?php endif; ?>
 
+        <?php
+        $logFile = SBA_ROOT . '/backups/update.log';
+        if (is_file($logFile)):
+            $logTxt = (string)file_get_contents($logFile);
+            $failed = strpos($logTxt, '!!') !== false;
+        ?>
+        <hr>
+        <h3 class="section-title">سجل آخر عملية تحديث
+            <?= $failed ? '<span class="badge badge-danger">توقفت بخطأ</span>' : '' ?></h3>
+        <pre class="update-raw-log"><?= e($logTxt) ?></pre>
+        <p class="muted">هذا السجل يُكتب خطوة بخطوة، فيبيّن أين توقفت العملية حتى لو ظهر خطأ 500.</p>
+        <?php endif; ?>
+
         <hr>
         <h3 class="section-title">كيف يعمل التحديث؟</h3>
         <ol class="update-steps">

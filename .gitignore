@@ -7,3 +7,7 @@ install/installed.lock
 
 # نظام التشغيل
 .DS_Store
+
+# سجلات ونسخ التشغيل المحلية
+backups/*.sql
+backups/*.log
