@@ -34,6 +34,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $a === 'run') {
     }
 }
 
+/* ترقية قاعدة البيانات فقط — للاستخدام بعد الرفع اليدوي للملفات */
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $a === 'migrate') {
+    try {
+        @set_time_limit(120);
+        require_once SBA_ROOT . '/install/migrations.php';
+        $updateLog = sba_run_migrations(db(), DB_PREFIX, SBA_VERSION);
+        audit_log('update', 'system', 0, 'ترقية قاعدة البيانات يدوياً إلى ' . SBA_VERSION);
+    } catch (Throwable $e) {
+        $checkError = 'فشلت الترقية: ' . safe_error($e);
+    }
+}
+
 /* إصدار قاعدة البيانات الحالي */
 $dbVersion = '1.0.0';
 try {
@@ -107,6 +119,25 @@ layout_header('تحديث النظام');
                 <?php endif; ?>
             </div>
         <?php endif; ?>
+
+        <?php if (version_compare($dbVersion, SBA_VERSION, '<')): ?>
+        <hr>
+        <div class="alert alert-info">
+            <strong>ملفات النظام أحدث من قاعدة البيانات</strong> — الملفات على <?= e(SBA_VERSION) ?>
+            وقاعدة البيانات على <?= e($dbVersion) ?>. يحدث هذا بعد رفع الملفات يدوياً عبر FTP.
+        </div>
+        <?php endif; ?>
+        <hr>
+        <h3 class="section-title">بعد الرفع اليدوي عبر FTP</h3>
+        <p class="muted">إن رفعت ملفات الإصدار الجديد بنفسك، اضغط هنا لتنفيذ ترقيات قاعدة البيانات
+           (إنشاء الجداول الجديدة وتعديل الأعمدة) — بلا تنزيل ولا استبدال ملفات.</p>
+        <form method="post" action="<?= e(url('update', ['a' => 'migrate'])) ?>" class="inline-form"
+              data-confirm="سيتم تنفيذ ترقيات قاعدة البيانات المعلقة فقط. متابعة؟">
+            <?= csrf_field() ?>
+            <button type="submit" class="btn <?= version_compare($dbVersion, SBA_VERSION, '<') ? 'btn-primary' : 'btn-ghost' ?>">
+                ترقية قاعدة البيانات فقط
+            </button>
+        </form>
 
         <?php
         $logFile = SBA_ROOT . '/backups/update.log';
