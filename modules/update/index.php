@@ -131,10 +131,18 @@ layout_header('تحديث النظام');
 ?>
 
 <?php if (!$updaterReady): ?>
-<div class="alert alert-danger">
-    <strong>ملف نظام التحديث غير موجود أو غير مكتمل</strong> —
-    أعد رفع الملف <code dir="ltr">core/updater.php</code> عبر FTP.
-    بقية أدوات هذه الصفحة تعمل بشكل طبيعي.
+<div class="card">
+    <div class="alert alert-danger">
+        <strong>ملف نظام التحديث غير مكتمل</strong> —
+        الملف <code dir="ltr">core/updater.php</code>
+        <?= is_file(SBA_ROOT . '/core/updater.php')
+            ? 'موجود لكنه فارغ أو مبتور (حجمه ' . number_format((int)filesize(SBA_ROOT . '/core/updater.php')) . ' بايت)'
+            : 'غير موجود' ?>،
+        وغالباً السبب رفع FTP لم يكتمل.
+    </div>
+    <p>لا داعي لـ FTP — استخدم <strong>أداة الإصلاح المستقلة</strong>، وهي لا تعتمد على هذا الملف
+       فتعمل رغم تعطّله. ستجلب كل ملفات النظام من المستودع وتخبرك بما كان ناقصاً.</p>
+    <a class="btn btn-primary" href="repair.php">&#128295; فتح أداة الإصلاح</a>
 </div>
 <?php endif; ?>
 
